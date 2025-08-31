@@ -1,0 +1,50 @@
+{"id": "rule_1", "category": "objective", "question": "What is the main objective of Tongits?", "answer": "The main objective of Tongits is to get rid of all your cards or have the lowest total card value when the game ends."}
+{"id": "rule_2", "category": "players", "question": "How many players can play Tongits?", "answer": "Tongits is usually played by 3 players, but it can also be played by 2."}
+{"id": "rule_3", "category": "cards", "question": "What type of deck is used in Tongits?", "answer": "Tongits is played with a standard 52-card deck, with no jokers."}
+{"id": "rule_4", "category": "gameplay", "question": "How does a player win by 'Tongits'?", "answer": "A player wins by 'Tongits' if they get rid of all their cards before the draw pile runs out."}
+{"id": "rule_5", "category": "gameplay", "question": "What is a 'draw' in Tongits?", "answer": "A 'draw' occurs when the draw pile is empty and no player has declared Tongits or challenged, resulting in a showdown to determine the winner."}
+{"id": "rule_6", "category": "dealing", "question": "How many cards does the dealer receive?", "answer": "The dealer receives 13 cards at the start of the game."}
+{"id": "rule_7", "category": "dealing", "question": "How many cards do non-dealers receive?", "answer": "Non-dealers receive 12 cards each at the start of the game."}
+{"id": "rule_8", "category": "dealing", "question": "What happens after dealing?", "answer": "The dealer discards one card face-up to start the discard pile."}
+{"id": "rule_9", "category": "turns", "question": "What actions can a player take on their turn?", "answer": "A player may draw a card, lay down melds, add to existing melds, and discard one card."}
+{"id": "rule_10", "category": "drawing", "question": "Where can a player draw a card from?", "answer": "A player can draw from either the draw pile or the discard pile."}
+{"id": "rule_11", "category": "melds", "question": "What is a 'meld'?", "answer": "A meld is a valid combination of cards such as a set or a run."}
+{"id": "rule_12", "category": "melds", "question": "What is a 'set' in Tongits?", "answer": "A set, also called a 'bunker', is three or four cards of the same rank."}
+{"id": "rule_13", "category": "melds", "question": "What is a 'run' in Tongits?", "answer": "A run is a sequence of at least three consecutive cards of the same suit."}
+{"id": "rule_14", "category": "melds", "question": "Can players add to other players' melds?", "answer": "Yes, players may add valid cards to their own melds or other players' melds on their turn."}
+{"id": "rule_15", "category": "discarding", "question": "When does a player discard a card?", "answer": "A player must discard one card at the end of their turn."}
+{"id": "rule_16", "category": "discarding", "question": "What happens if a player forgets to discard?", "answer": "Their turn is considered incomplete until they discard a card."}
+{"id": "rule_17", "category": "fight", "question": "What is a 'fight' in Tongits?", "answer": "A 'fight' is a challenge where players reveal their hands to determine who has the lowest deadwood points."}
+{"id": "rule_18", "category": "fight", "question": "When can a fight be declared?", "answer": "A fight can be declared if a player believes they have the lowest deadwood points."}
+{"id": "rule_19", "category": "fight", "question": "What happens if the challenger loses the fight?", "answer": "If the challenger loses, they must pay double the stake or penalty as agreed in the rules."}
+{"id": "rule_20", "category": "fight", "question": "What happens if the challenger wins the fight?", "answer": "If the challenger wins, they take the pot or agreed stake immediately."}
+{"id": "rule_21", "category": "folding", "question": "What does it mean to 'fold' in Tongits?", "answer": "Folding means a player chooses to stop playing the round, often to avoid bigger losses."}
+{"id": "rule_22", "category": "folding", "question": "Can a player fold at any time?", "answer": "Yes, a player may fold on their turn before drawing a card."}
+{"id": "rule_23", "category": "winning", "question": "How else can a player win besides Tongits?", "answer": "A player may win by having the lowest deadwood points in a fight or draw showdown."}
+{"id": "rule_24", "category": "winning", "question": "What happens if two players tie in deadwood points?", "answer": "If there is a tie, the player closest to the dealer in turn order wins."}
+{"id": "rule_25", "category": "scoring", "question": "How are face cards scored in Tongits?", "answer": "Face cards (J, Q, K) are worth 10 points each."}
+{"id": "rule_26", "category": "scoring", "question": "How is an Ace scored in Tongits?", "answer": "An Ace is worth 1 point."}
+{"id": "rule_27", "category": "scoring", "question": "How are number cards scored in Tongits?", "answer": "Number cards are worth their face value in points."}
+{"id": "rule_28", "category": "scoring", "question": "What are 'deadwood' points?", "answer": "Deadwood points are the total value of unmatched cards left in a player’s hand."}
+{"id": "rule_29", "category": "showdown", "question": "When does a showdown occur?", "answer": "A showdown occurs when the draw pile is exhausted or when a fight is declared."}
+{"id": "rule_30", "category": "showdown", "question": "What happens during a showdown?", "answer": "All players reveal their hands and the player with the lowest deadwood wins."}
+{"id": "rule_31", "category": "variations", "question": "Can Tongits be played with 4 players?", "answer": "Yes, some variations allow 4 players, with adjusted dealing rules."}
+{"id": "rule_32", "category": "variations", "question": "What is 'sapaw' in Tongits?", "answer": "Sapaw means adding cards to an existing meld on the table, either yours or an opponent's."}
+{"id": "rule_33", "category": "variations", "question": "What is 'hulog' in Tongits?", "answer": "Hulog refers to laying down melds from your hand onto the table."}
+{"id": "rule_34", "category": "variations", "question": "What is 'burned' in Tongits?", "answer": "A player is burned if they never lay down a meld before the game ends, and they automatically lose."}
+{"id": "rule_35", "category": "betting", "question": "Is Tongits often played with betting?", "answer": "Yes, Tongits is commonly played with money, chips, or agreed stakes."}
+{"id": "rule_36", "category": "betting", "question": "How is the pot won in betting Tongits?", "answer": "The winner of the round takes the pot, which can grow if fights occur."}
+{"id": "rule_37", "category": "betting", "question": "What happens if a player folds in a betting game?", "answer": "If a player folds, they forfeit their chance to win the pot and may lose part of their stake."}
+{"id": "rule_38", "category": "betting", "question": "What is 'double' in Tongits betting?", "answer": "In some house rules, if a player loses a fight, they must pay double the stake."}
+{"id": "rule_39", "category": "strategy", "question": "Why is it important to keep track of discards?", "answer": "Tracking discards helps predict opponents’ possible melds and strategy."}
+{"id": "rule_40", "category": "strategy", "question": "Why is early melding risky?", "answer": "Laying down melds too early can expose your strategy and help opponents add cards."}
+{"id": "rule_41", "category": "strategy", "question": "Why is holding onto middle cards useful?", "answer": "Middle cards (5–9) have higher chances of forming runs, making them more flexible."}
+{"id": "rule_42", "category": "strategy", "question": "When should you call a fight?", "answer": "A fight should be called when you are confident you have the lowest deadwood and opponents are unlikely to improve."}
+{"id": "rule_43", "category": "strategy", "question": "When should you avoid calling a fight?", "answer": "Avoid calling a fight if opponents have melded heavily or added cards, as they may have lower deadwood."}
+{"id": "rule_44", "category": "etiquette", "question": "Can players bluff in Tongits?", "answer": "Yes, bluffing by discarding deceptive cards or delaying melds is part of strategy."}
+{"id": "rule_45", "category": "etiquette", "question": "What is considered bad etiquette in Tongits?", "answer": "Bad etiquette includes stalling, peeking at others’ cards, or arguing over rules."}
+{"id": "rule_46", "category": "etiquette", "question": "How should disputes be settled?", "answer": "Disputes are usually settled by house rules or by replaying the round."}
+{"id": "rule_47", "category": "setup", "question": "How is the dealer chosen?", "answer": "The dealer is chosen randomly or by agreement before the first round."}
+{"id": "rule_48", "category": "setup", "question": "How is the next dealer decided?", "answer": "The winner of the previous round usually becomes the next dealer."}
+{"id": "rule_49", "category": "setup", "question": "What direction does play move in Tongits?", "answer": "Play proceeds in a clockwise direction."}
+{"id": "rule_50", "category": "setup", "question": "What should be agreed upon before starting?", "answer": "Players should agree on betting stakes, variations, and house rules before the game begins."}
