@@ -45,7 +45,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     
     setIsLoading(true);
     // Add user message immediately
-    const userMessage = { text: text.trim(), source: "text", sender: "user" };
+    const userMessage = { text: text.trim(), source: "text", sender: "user", ai_response:"" };
     setMessages((prev) => [...prev, userMessage]);
     
     try {
@@ -65,6 +65,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
       console.error("Error sending message:", error);
       setMessages((prev) => [...prev, { 
         text: "Sorry, there was an error sending your message.", 
+        ai_response:"",
         source: "error", 
         sender: "assistant" 
       }]);
@@ -101,13 +102,17 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
             }
           
           });
-          const data = await response.json();
-          
+          const data = await response.json();          
           setMessages((prev) => [...prev, { ...data, sender: "user", audioBlob: blob, audioUrl: audioUrl, isVoiceMessage:true }]);
+          
+          // Add assistant response
+          setMessages((prev) => [...prev, { ...data, sender: "assistant" }]);
+
         } catch (error) {
           console.error("Error sending voice message:", error);
           setMessages((prev) => [...prev, { 
             text: "Sorry, there was an error processing your voice message.", 
+            ai_response: "",
             source: "error", 
             sender: "assistant",
             isVoiceMessage: true,
@@ -217,7 +222,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
           </button>
         </div>
       </header>
-      <div className="flex min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 items-center justify-center p-4">      
+      <div className="flex min-h-[calc(100vh-95px)] bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 items-center justify-center p-4">      
         <div className="w-full max-w-2xl h-[600px] bg-white/10 backdrop-blur-lg rounded-3xl shadow-2xl border border-white/20 flex flex-col overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-6 text-white">
@@ -261,7 +266,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
                         onStop={stopAudio}
                       />
                     )}
-                    <p>{message.text}</p>                  
+                    <p>{message.sender === "user" ? message.text : message.ai_response}</p>                  
                   </div>
                 </div>
               ))

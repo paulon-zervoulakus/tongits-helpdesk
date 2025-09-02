@@ -21,6 +21,7 @@ export interface Booking {
 
 export type MessageType = {
   text: string;
+  ai_response:string;
   source: string;
   sender: string;
   audioBlob?: Blob;

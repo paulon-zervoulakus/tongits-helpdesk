@@ -56,8 +56,8 @@ const AuthPage: React.FC<AuthPageProps> = ({ onLogin }) => {
   return (
     <div className="auth-container">
       <div className="auth-card">
-        <h1>📅 Booking Platform</h1>
-        <p>Sign in to manage your bookings and chat with our assistant</p>
+        <h1>Tongits AI Assistant</h1>
+        <p>Sign in to chat with our assistant</p>
         
         {error && <div className="error-message">{error}</div>}
         
