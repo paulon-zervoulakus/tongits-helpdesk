@@ -28,6 +28,7 @@ async def node_intent_router(state: SharedState, config: RunnableConfig) -> Shar
     # test_tools(config=config)
 
     print(f"updated state: {current_state}")
+    
 
     return current_state
     
