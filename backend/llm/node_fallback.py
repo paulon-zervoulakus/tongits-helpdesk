@@ -52,6 +52,5 @@ async def fallback(state: SharedState):
     print(f"\nTime check\n - after llm: intent_classifier - time: {elapsed:.3f}")
     return {
         **state,
-        "short_message": "node fallback",
         "messages": state.get("messages", []) + [AIMessage(content=llm_result)]
     }

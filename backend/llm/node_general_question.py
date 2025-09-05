@@ -1,3 +1,4 @@
+import json
 from datetime import datetime
 from langchain_core.messages import AIMessage
 from llm.states import SharedState
@@ -8,6 +9,7 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableConfig
 from collection_db import chroma_client, embedder, GAME_COLLECTION_NAME
 from typing import Optional
+from langchain_community.callbacks.manager import get_openai_callback
 
 global_thread_id = "xxx"
 
@@ -197,22 +199,30 @@ def search_conversation_history(
 def prompt_modifier():
     return """You are Crystal Maiden, a helpful assistant for the Filipino card game Tongits."
 
-### AI PERSONALITY 
-- Answer politely and naturally. 
-- Do not insist of telling your name if not being asked.
-- Keep in mind the difference between asking about you versus asking about the users information.
-  * Eg: user ask "Whats my name" this means the user is asking about the information about their self from the history conversation.
-  * eg: user ask "whats is your name" this means that you need to provide information about you AI assistant name.
-
+### GAME RULE RELIABILITY RULES:
+- You are NOT allowed to invent, assume, or guess Tongits rules. 
+- All answers about Tongits gameplay, card distribution, moves, penalties, or winning conditions MUST come from the game_ruling tool. 
+- If game_ruling provides no relevant information, answer exactly: 
+  "I couldn't find that information in the official rules."
+- NEVER create or modify rules on your own.
 
 You have access to the following tools:
 
 {tools}
-
+   
 ### IMPORTANT USAGE OF TOOLS:
 - Always use the search_conversation_history tool to get the most relevant information about the user's previous messages.
 - Always use the game_ruling tool to get the most relevant information about the game rules.
 - Do not use any Tools if the user is just making a greetings or introducing themselves.
+
+### MEMORY USAGE RULES:
+1. Always check the Short Messages (STM Buffer) first for recent context. 
+   - If the answer can be found directly from STM, do NOT use any tools. 
+2. Only if STM does not contain enough information, then use the 
+   search_conversation_history tool. 
+   - Use this tool only as a fallback when STM is insufficient.
+3. Never use search_conversation_history redundantly if STM already 
+   contains the relevant context.
 
 ### IMPORTANT TOOL ARGUMENT RULES:
 - Tool: search_conversation_history(query: str, filter_user: Optional[bool] = None, top_k: int = 3)
@@ -232,21 +242,29 @@ You have access to the following tools:
 
 MANDATORY FORMAT - Follow this EXACTLY after each tool use:
 
+## REASONING CHAIN FORMAT (apply PER QUESTION):
 Question: the input question you must answer
-Thought: you should always think about what to do, you need to consider if you need to use tools or not. If not, go straight to Final Answer.
-Action: the action to take, should be one of [{tool_names}]
-Action Input: the input to the action
-Observation: the result of the action
-Thought: I now know the final answer
-Final Answer: the final answer to the original input question
+Thought: Analyze the input. Check short_messages (STM Buffer) first. 
+    - If STM has the answer → go directly to Final Answer. 
+    - If STM does not have the answer → decide whether to use a tool.
+Action: MUST be exactly one of [{tool_names}] OR the string "None". 
+    - If using a tool → write ONLY Action and Action Input. 
+    - If answering directly → write Action: None and Action Input: None, then proceed to Final Answer.
+Action Input: MUST be valid JSON if using a tool, OR the string "None".
+Observation: (this will be filled with the tool result)
 
-## CRITICAL POST-OBSERVATION RULES:
+## CRITICAL RULE:
+- In any single step, you must produce EITHER:
+    1. Action + Action Input (tool call), OR
+    2. Final Answer (if no tool is needed).
+- NEVER output Action and Final Answer together in the same step.
 
-**AFTER getting an Observation, you MUST write EXACTLY:**
-```
-Thought: I now know the final answer
-Final Answer: [your response using the observation data]
-```
+## AFTER OBSERVATION:
+When you receive an Observation from a tool:
+1. Write:
+    Thought: I now know the final answer
+    Final Answer: [your response STRICTLY using the Observation data. If no Observation is available or relevant, answer exactly: "I couldn't find that information in the official rules."]
+2. STOP — do not output Action again.
 
 **DO NOT:**
 - Try to use another tool after getting relevant results
@@ -290,22 +308,20 @@ async def general_question(state: SharedState, config: RunnableConfig):
         # Create agent with tools using custom prompt (required)
         tools =[search_conversation_history, game_ruling]
         prompt = ChatPromptTemplate.from_messages([
-            ("system", prompt_modifier()),
+            ("system", prompt_modifier() + "\n\nShort Messages (STM Buffer): {short_messages}"),
             ("human", "{input}"),
-            ("assistant", "{agent_scratchpad}"),
+            ("assistant", "{agent_scratchpad}")
         ])        
 
         agent = create_react_agent(llm=base_llm, tools=tools, prompt=prompt)
 
         # # Create agent executor with proper configuration
-        agent_executor = AgentExecutor(
+        agent_executor = AgentExecutor.from_agent_and_tools(
             agent=agent,
             tools=tools,
             verbose=True,
             max_iterations=3,
-            handle_parsing_errors=True,
-            return_intermediate_steps=True,
-            early_stopping_method="force"         
+            handle_parsing_errors=True,      
         )
         
         # try:
@@ -316,34 +332,38 @@ async def general_question(state: SharedState, config: RunnableConfig):
         
         # Execute agent with tools using try-catch for StopIteration
         print("Executing agent...")
-        try:
-            result = await agent_executor.ainvoke(
-                {"input": state["input_message"]},  # Wrap in dict
-                config=config
-            )
-        except StopIteration as stop_err:
-            print(f"StopIteration caught: {stop_err}")
-            # Fallback to direct LLM call
-            result = await fallback_direct_llm(state["input_message"], config)
-        except Exception as agent_err:
-            print(f"Agent execution error: {agent_err}")
-            # Fallback to direct LLM call
-            result = await fallback_direct_llm(state["input_message"], config)
+        with get_openai_callback() as cb:
+            try:
+                result = await agent_executor.ainvoke(
+                    {
+                        "input": state["input_message"],
+                        "short_messages": state["short_messages"]                
+                    },  # Wrap in dict
+                    config=config
+                )
+            except StopIteration as stop_err:
+                print(f"StopIteration caught: {stop_err}")
+                # Fallback to direct LLM call
+                result = await fallback_direct_llm(state["input_message"], config)
+            except Exception as agent_err:
+                print(f"Agent execution error: {agent_err}")
+                # Fallback to direct LLM call
+                result = await fallback_direct_llm(state["input_message"], config)
 
-        print("**********************************")
-        print(f"Result type: {type(result)}")
-        print(f"Result keys: {result.keys() if isinstance(result, dict) else 'Not a dict'}")
-        print(f"Result: {result}")
-        print("**********************************")
-        
-        
-        elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"\nTime check\n - after llm: general_question - time: {elapsed:.3f}")
+            print("**********************************")
+            print(f"Prompt tokens: {cb.prompt_tokens}")
+            print(f"Completion tokens: {cb.completion_tokens}")
+            print(f"Total tokens: {cb.total_tokens}")
+            print(json.dumps(result, indent=4, ensure_ascii=False, default=str))
+            print("**********************************")
+            
+            
+            elapsed = (datetime.now() - start_time).total_seconds()
+            print(f"\nTime check\n - after llm: general_question - time: {elapsed:.3f}")
         
         return {
             **state,
-            "short_message": "node fallback with tools",
-            "messages": state.get("messages", []) + [AIMessage(content=result["output"])]
+            "messages": AIMessage(content=result["output"])
         }
         
     except Exception as e:
@@ -356,8 +376,7 @@ async def general_question(state: SharedState, config: RunnableConfig):
         
         return {
             **state,
-            "short_message": "node fallback - error occurred",
-            "messages": state.get("messages", []) + [AIMessage(content=str(e))]
+            "messages": AIMessage(content=str(e))
         }
 
 

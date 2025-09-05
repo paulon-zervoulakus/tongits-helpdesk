@@ -6,6 +6,5 @@ async def follow_up(state: SharedState):
 
     print(state["input_message"])
     return {
-        **state,
-        "short_message": "node follow up"
+        **state
     }

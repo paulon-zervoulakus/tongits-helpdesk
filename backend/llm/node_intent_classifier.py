@@ -118,6 +118,5 @@ async def intent_classifier(state: SharedState) -> SharedState:
 
     return {
         **state,
-        "intent": result_content,
-        "short_message": "Node Intent Classifier"
+        "intent": result_content
     }

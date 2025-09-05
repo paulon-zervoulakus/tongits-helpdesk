@@ -46,12 +46,12 @@ async def transcribe_audio(
                 message_text = last_ai_message.content if hasattr(last_ai_message, 'content') else str(last_ai_message)
             else:
                 # No AI messages found
-                message_text = reply.get("short_message", "No AI response generated")
+                message_text = reply.get("short_messages", "No AI response generated")
                 if isinstance(message_text, list):
                     message_text = message_text[-1] if message_text else "No AI response generated"
         else:
             # Fallback if no messages
-            message_text = reply.get("short_message", "No response generated")
+            message_text = reply.get("short_messages", "No response generated")
             if isinstance(message_text, list):
                 message_text = message_text[-1] if message_text else "No response generated"
 
@@ -105,12 +105,12 @@ async def chat_text(
             message_text = last_ai_message.content if hasattr(last_ai_message, 'content') else str(last_ai_message)
         else:
             # No AI messages found
-            message_text = reply.get("short_message", "No AI response generated")
+            message_text = reply.get("short_messages", "No AI response generated")
             if isinstance(message_text, list):
                 message_text = message_text[-1] if message_text else "No AI response generated"
     else:
         # Fallback if no messages
-        message_text = reply.get("short_message", "No response generated")
+        message_text = reply.get("short_messages", "No response generated")
         if isinstance(message_text, list):
             message_text = message_text[-1] if message_text else "No response generated"
 
