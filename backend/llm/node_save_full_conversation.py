@@ -28,17 +28,17 @@ async def save_full_conversation(state: SharedState, config: RunnableConfig):
     metadatas = []
     ids = []
 
-    # init_content = state["input_message"]
-    # init_meta = {
-    #     "thread_id": thread_id,
-    #     "message_type": "user",
-    #     "timestamp": datetime.now().isoformat()        
-    # }
-    # init_id = f"{thread_id}_{datetime.now().timestamp()}_{uuid.uuid4()}"
+    init_content = state["input_message"]
+    init_meta = {
+        "thread_id": thread_id,
+        "message_type": "user",
+        "timestamp": datetime.now().isoformat()        
+    }
+    init_id = f"{thread_id}_{datetime.now().timestamp()}_{uuid.uuid4()}"
    
-    # documents.append(init_content)
-    # metadatas.append(init_meta),
-    # ids.append(init_id)
+    documents.append(init_content)
+    metadatas.append(init_meta),
+    ids.append(init_id)
 
     for message in messages:
         # Extract content from message
