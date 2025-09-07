@@ -1,5 +1,5 @@
 """ Chat routes """
-from enum import unique
+from datetime import datetime
 from fastapi import APIRouter, Depends, UploadFile
 from langgraph.graph.state import RunnableConfig
 from utils.authentication import AuthUser, get_current_user
@@ -18,10 +18,16 @@ async def transcribe_audio(
     file: UploadFile,
     current_user: AuthUser = Depends(get_current_user)
 ):    
+    print(f"\nTime check\n - before: transcribe_audio")
+    start_time = datetime.now()
+
     voice = VoiceRepository()
 
     transcribed_text, unique_name = await voice.save_voice(file, current_user.sub)
-    
+        
+    elapsed = (datetime.now() - start_time).total_seconds()
+    print(f"\nTime check\n - after : transcribe_audio - time: {elapsed:.3f}")
+
     message_text = ""
     if transcribed_text != "":    
         init_state: SharedState = {

@@ -20,5 +20,5 @@ def setup_persistence(persistence_type="memory"):
 
 
 # Module-level variables that will be initialized
-base_llm = ChatOllama(model=LLM_MODEL, temperature=LLM_TEMPERATURE, base_url=OLLAMA_BASE_URL)
+base_llm = ChatOllama(model=LLM_MODEL, temperature=LLM_TEMPERATURE, base_url=OLLAMA_BASE_URL, num_ctx=8192, num_predict=4080)
 checkpointer = setup_persistence()
