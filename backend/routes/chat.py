@@ -6,9 +6,12 @@ from utils.authentication import AuthUser, get_current_user
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from typing import Literal
-from repository.voice import VoiceRepository
+from repository.voicecpp import VoiceRepositoryCpp
 from llm.node_main import build_graph
 from llm.states import SharedState
+
+import tempfile
+from whispercpp import Whisper
 
 router = APIRouter(prefix="/api", tags=["chat"])
 graph = build_graph()
@@ -18,15 +21,16 @@ async def transcribe_audio(
     file: UploadFile,
     current_user: AuthUser = Depends(get_current_user)
 ):    
-    print(f"\nTime check\n - before: transcribe_audio")
+    print(f"\nTime check\n - calculating : transcribe_audio cpp")
     start_time = datetime.now()
 
-    voice = VoiceRepository()
+    voice = VoiceRepositoryCpp()
 
-    transcribed_text, unique_name = await voice.save_voice(file, current_user.sub)
-        
+    transcribed_text, unique_name = await voice.transcribe_voice(file, current_user.sub)
+
+    print(f"\nTranscribe Text: {transcribed_text}") 
     elapsed = (datetime.now() - start_time).total_seconds()
-    print(f"\nTime check\n - after : transcribe_audio - time: {elapsed:.3f}")
+    print(f"\nTime check\n - after : transcribe_audio cpp - time: {elapsed:.3f}")
 
     message_text = ""
     if transcribed_text != "":    
