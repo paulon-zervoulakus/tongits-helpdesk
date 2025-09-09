@@ -56,15 +56,11 @@ async def transcribe_audio(
                 message_text = last_ai_message.content if hasattr(last_ai_message, 'content') else str(last_ai_message)
             else:
                 # No AI messages found
-                message_text = reply.get("short_messages", "No AI response generated")
-                if isinstance(message_text, list):
-                    message_text = message_text[-1] if message_text else "No AI response generated"
+                message_text = "No AI response generated"               
         else:
             # Fallback if no messages
-            message_text = reply.get("short_messages", "No response generated")
-            if isinstance(message_text, list):
-                message_text = message_text[-1] if message_text else "No response generated"
-
+            message_text = "No response generated"
+            
     # Return response with both transcription & file URL
     return JSONResponse({
         "text": transcribed_text,
@@ -94,8 +90,7 @@ async def chat_text(
     user_text = in_.text.strip()
     # demo “bot” logic – echo with a little formatting
     init_state: SharedState = {
-        "input_message": user_text,
-        "messages": []
+        "input_message": user_text
     }
     config: RunnableConfig = {
          "configurable": {
@@ -104,6 +99,7 @@ async def chat_text(
         }    
     }
     reply = await graph.ainvoke(init_state, config=config)    
+    
     
     if reply.get("messages") and len(reply["messages"]) > 0:
         # Collect all AI messages
@@ -115,15 +111,9 @@ async def chat_text(
             message_text = last_ai_message.content if hasattr(last_ai_message, 'content') else str(last_ai_message)
         else:
             # No AI messages found
-            message_text = reply.get("short_messages", "No AI response generated")
-            if isinstance(message_text, list):
-                message_text = message_text[-1] if message_text else "No AI response generated"
+            message_text ="No AI response generated"            
     else:
         # Fallback if no messages
-        message_text = reply.get("short_messages", "No response generated")
-        if isinstance(message_text, list):
-            message_text = message_text[-1] if message_text else "No response generated"
-
-
+        message_text = "No response generated"
     
     return MessageOut(ai_response=message_text, source="bot")

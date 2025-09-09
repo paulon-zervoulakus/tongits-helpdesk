@@ -14,7 +14,7 @@ async def save_short_message(state: SharedState):
         dict: Updated state with STM message appended.
     """
     # Optionally enforce STM limit (e.g., keep last 5 messages only)
-    STM_LIMIT = 10
+    STM_LIMIT = 5
 
     # Ensure messages list exists
     # Append the new message
@@ -36,8 +36,8 @@ async def save_short_message(state: SharedState):
     if len(messages) > STM_LIMIT:
         messages = messages[-STM_LIMIT:]
 
-    # Return updated state
-    return {
-        **state,
-        "short_messages": messages
-    }
+    # # Return updated state
+    # return {
+    #     **state,
+    #     "short_messages": messages
+    # }

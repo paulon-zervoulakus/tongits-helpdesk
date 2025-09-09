@@ -6,6 +6,6 @@ class SharedState(TypedDict, total=False):
     """SharedState Schema"""
     input_message: Annotated[str, lambda prev, new: new if new is not None else prev]
     intent: Annotated[List[str], lambda prev, new: new if new is not None else prev]
-    short_messages: Annotated[List[str], lambda prev, new: new if new is not None else prev]
+    # short_messages: Annotated[List[str], lambda prev, new: new if new is not None else prev]
     messages: Annotated[List[BaseMessage], add_messages]
     

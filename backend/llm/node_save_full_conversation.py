@@ -81,7 +81,4 @@ async def save_full_conversation(state: SharedState, config: RunnableConfig):
             embeddings=embeddings
         )
         print(f"Saved {len(documents)} messages to ChromaDB collection: {thread_id}")
-    
-    return {
-        **state
-    }
+        

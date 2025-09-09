@@ -1,6 +1,6 @@
 import json
 from datetime import datetime
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, SystemMessage, HumanMessage
 from llm.states import SharedState
 from llm_model import base_llm
 from langchain_core.tools import tool
@@ -192,7 +192,7 @@ def prompt_modifier():
 {tools}
 
 ### MEMORY USAGE STRATEGY:
-**STM Buffer**: Shows only the last ~10 messages (recent context)
+**STM Buffer**: Shows only the last ~6 messages (recent context)
 **Full conversation history**: Available via search_conversation_history tool
 **Key point**: If user references something from "before" or "earlier", it's likely NOT in STM Buffer
 **Always use search_conversation_history** when user asks about previous conversations
@@ -202,8 +202,16 @@ def prompt_modifier():
     - query: what you're searching for (e.g., "name", "Paulo", "user introduction")  
     - filter_user: true (search user messages), false (search AI responses), null (search both)
     - top_k: 3, offset: 0
+    - offset: 0 (first search), 3 (second search), 6 (third search) - USE THIS FOR PAGINATION!
 **game_ruling:**
     - For any Tongits gameplay questions
+
+### SEARCH STRATEGY:    
+- **First search**: Always use offset=0
+- **If results are insufficient or irrelevant**: 
+  - Option A: Try offset=3 to get next batch of results
+  - Option B: Try different query terms
+- **Never repeat identical searches** - always change either query or offset
 
 ### DECISION PROCESS:
 1. **Check STM Buffer first** for immediate context
@@ -215,7 +223,7 @@ def prompt_modifier():
 ### RESPONSE FORMAT:
 Thought: [Analyze the request. Check STM Buffer. Decide if tools are needed.]
 Action: [MUST be one of {tool_names} if a tool is needed. If no tool is needed, skip Action and Action Input entirely, and go directly to Final Answer.]
-Action Input: {{"query": "users input", "filter_user": true, "top_k": 3}}
+Action Input: {{"query": [users input], "filter_user": true, "top_k": 3, "offset": [offset value]}}
 Observation: [Result from the tool, provided by the system]
 Final Answer: [One complete consolidated answer]
 
@@ -225,12 +233,12 @@ Final Answer: [One complete consolidated answer]
 **User asks about previous conversation (STM insufficient):**
     Thought: User is asking about something from earlier. STM Buffer does not contain the answer, so I must search the full conversation history.
     Action: search_conversation_history
-    Action Input: {{"query": "users input", "filter_user": true, "top_k": 3}}
+    Action Input: {{"query": [users input], "filter_user": true, "top_k":3 }}
 
 **User asks about Tongits rules:**
     Thought: This is a game rules question. I need the game_ruling tool to provide the correct rule.
     Action: game_ruling
-    Action Input: {{"query": "users input"}}
+    Action Input: {{"query": [users input]}}
 
 **User asks about previous conversation, STM has sufficient context:**
     Thought: The STM Buffer already contains the correct answer, so I can respond directly without using tools.
@@ -239,13 +247,22 @@ Final Answer: [One complete consolidated answer]
 **User insists on checking conversation history, even if STM has sufficient context:**
     Thought: The user explicitly asked me to check deeper or look into previous chat. Even though STM Buffer has the information, I must still search the conversation history.
     Action: search_conversation_history
-    Action Input: {{"query": "users input", "filter_user": true, "top_k": 3}}
+    Action Input: {{"query": [users input], "filter_user": true, "top_k": 3}}
 
+**User asks about previous conversation (need to paginate):**
+    Thought: User is asking about something from earlier. Let me search conversation history.
+    Action: search_conversation_history
+    Action Input: {{"query": [user input], "filter_user": true, "top_k": 3, "offset": 0}}
+    
+    Observation: Found 3 entries but they don't contain the name.
+    
+    Thought: The first 3 results didn't have the name. Let me check the next batch.
+    Action: search_conversation_history  
+    Action Input: {{"query": [user input], "filter_user": true, "top_k": 3, "offset": 3}}
 ---
 
 ### CRITICAL RULES:
-- STM Buffer might not contain all conversation history  
-- When in doubt about previous conversation details, use `search_conversation_history`  
+- When in doubt about previous conversation details in STM, use `search_conversation_history`  
 - Always use tools when the user explicitly asks you to "check previous chat" or recall earlier information  
 - **After any Observation:**
   - If all user questions are answered → go to Final Answer  
@@ -287,13 +304,17 @@ async def general_question(state: SharedState, config: RunnableConfig):
         global global_thread_id 
         global_thread_id = config.get("configurable", {}).get("thread_id")
 
-        # Create agent with tools using custom prompt (required)
-        tools =[search_conversation_history, game_ruling]
+        tools = [search_conversation_history, game_ruling]
+        tool_names = [tool.name for tool in tools]
+        # tool_descriptions = "\n".join([f"- {tool.name}: {tool.description}" for tool in tools])
+        
+
         prompt = ChatPromptTemplate.from_messages([
             ("system", prompt_modifier() + "\n\nShort Messages (STM Buffer): {short_messages}"),
             ("human", "{input}"),
-            ("assistant", "{agent_scratchpad}")
-        ])        
+            ("assistant", "{agent_scratchpad}"),
+            ("system", "{tool_names}")
+        ]) 
 
         agent = create_react_agent(llm=base_llm, tools=tools, prompt=prompt)
 
@@ -306,21 +327,15 @@ async def general_question(state: SharedState, config: RunnableConfig):
             handle_parsing_errors=True,      
         )
         
-        # try:
-        #     test_result = search_conversation_history("test query", 1)
-        #     print(f"Tool test result: {test_result[:100]}...")
-        # except Exception as tool_error:
-        #     print(f"Tool test failed: {tool_error}")
-        
-        # Execute agent with tools using try-catch for StopIteration
         print("Executing agent...")
         with get_openai_callback() as cb:
             try:
                 result = await agent_executor.ainvoke(
                     {
                         "input": state["input_message"],
-                        "short_messages": state["short_messages"]                
-                    },  # Wrap in dict
+                        "short_messages": "\n".join([f"{m.type}: {m.content}" for m in state["messages"][-6:]]),
+                        "tool_names": tool_names
+                    }, 
                     config=config
                 )
             except StopIteration as stop_err:
@@ -342,23 +357,24 @@ async def general_question(state: SharedState, config: RunnableConfig):
             
             elapsed = (datetime.now() - start_time).total_seconds()
             print(f"\nTime check\n - after llm: general_question - time: {elapsed:.3f}")
-        
+               
         return {
             **state,
-            "messages": AIMessage(content=result["output"])
+            "messages": [
+                HumanMessage(content=state["input_message"]),
+                AIMessage(content=result["output"])
+            ]
         }
         
     except Exception as e:
         print(f"Error in general_question: {str(e)}")
-        
-        # Fallback to simple response without tools
-#         fallback_response = """I'm Maiden, your Tongits assistant. I can help you with questions about this Filipino card game. 
-        
-# Tongits is a three-player rummy game where you try to empty your hand or have the lowest points. Players form melds (sets/runs) and can hit others' melds or burn to end the round early."""
-        
+
         return {
             **state,
-            "messages": AIMessage(content=str(e))
+            "messages": [
+                HumanMessage(content=state["input_message"]),
+                SystemMessage(content=str(e))
+            ]
         }
 
 
