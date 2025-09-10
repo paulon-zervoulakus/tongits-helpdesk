@@ -18,25 +18,25 @@ async def node_initializer(state: SharedState) -> SharedState:
     }
 
 async def node_intent_router(state: SharedState, config: RunnableConfig) -> SharedState:
-    current_state = state
+    new_state = state
     
     # for i in state["intent"]:
     #     match i:
     #         case "general_question":
-    #             current_state = await node_general_question(current_state)           
+    #             new_state = await node_general_question(new_state)           
     #         case "fallback":            
-    #             current_state = await node_fallback(current_state)      
-    # current_state["messages"] = []
-    current_state = await node_general_question(current_state, config=config)           
+    #             new_state = await node_fallback(new_state)      
+    # new_state["messages"] = []
+    new_state = await node_general_question(state, config=config)           
     # test_tools(config=config)
 
     # print("State:")
-    # print(json.dumps(current_state, indent=4, ensure_ascii=False, default=str))
+    # print(json.dumps(new_state, indent=4, ensure_ascii=False, default=str))
     
-    asyncio.create_task(node_save_full_conversation(state, config))
+    asyncio.create_task(node_save_full_conversation(new_state, config))
     # asyncio.create_task(node_save_short_message(state))
 
-    return current_state
+    return new_state
     
 
 def build_graph():

@@ -2,10 +2,12 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-LLM_MODEL = "llama3.2-vision:latest"
-OLLAMA_BASE_URL = "http://localhost:11434" 
+# LLM_MODEL = "llama3.2-vision:latest"
+LLM_MODEL = "llama3.2-vision-8k:latest"
 # LLM_MODEL = "gpt-oss:latest"
-# OLLAMA_BASE_URL = "http://localhost:11435" 
+# LLM_MODEL = "gpt-oss-2k:latest"
+OLLAMA_BASE_URL = "http://localhost:11434" 
+
 
 LLM_TEMPERATURE = 0
 
