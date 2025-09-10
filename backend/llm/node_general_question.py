@@ -298,7 +298,7 @@ IMPORTANT RULES:
 - Always output a “Final Answer:” section, even if tools fail.
 - If tool returns nothing, still give a Final Answer and ask the user for details.
 - If tool call fails or is unclear, explain and ask for clarification.
-- If the search results contain ANY explicit mention of the inquiry topic, DO NOT say "I couldn't find." instead synthesize the result of the query
+- If the search results contain ANY explicit mention of the inquiry topic, DO NOT say "I couldn't find." instead synthesize all the search result to give reasonable answer.
 - Only say "I couldn't find..." if there are truly zero relevant entries returned.
 
 STYLE:
