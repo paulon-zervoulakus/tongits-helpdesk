@@ -12,7 +12,7 @@ class VoiceRepositoryCpp:
     def __init__(self):
         pass
 
-    async def transcribe_voice(self, file: UploadFile, current_user_sub: str):
+    async def transcribe_voice(self, file: bytes, current_user_sub: str):
         """ This repositor will save the voice chat and return a Transcribe text
             Params:
                 file: The uploaded file
@@ -20,14 +20,14 @@ class VoiceRepositoryCpp:
                 save_file: to save or not
         """       
         # Generate unique filename
-        file_ext = os.path.splitext(file.filename)[-1]
-        unique_name = f"{uuid.uuid4().hex}{file_ext}"
+        # file_ext = os.path.splitext(file.filename)[-1]        
+        unique_name = f"{uuid.uuid4().hex}.webm"
         webm_file = os.path.join(UPLOAD_FOLDER, current_user_sub, unique_name)
 
         os.makedirs(os.path.dirname(webm_file), exist_ok=True)
         # Save file
         with open(webm_file, "wb") as f:
-            f.write(await file.read())       
+            f.write(file)       
         # with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         #     tmp_path = tmp.name
         base_path = r"D:\development\stt\backend"

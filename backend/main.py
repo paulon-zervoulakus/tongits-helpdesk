@@ -5,6 +5,7 @@ from routes.chat import router as chat_route
 from routes.audio import router as audio_route
 from routes.auth import router as auth_route
 from routes.public import router as pub_route
+from routes.stream import router as stream_route
 from contextlib import asynccontextmanager
 from database import init_db
 from collection_db import initialize_chroma_collection
@@ -39,6 +40,7 @@ app.include_router(chat_route)
 app.include_router(audio_route)
 app.include_router(auth_route)
 app.include_router(pub_route)
+app.include_router(stream_route)
 
 if __name__ == "__main__":
     uvicorn.run(
