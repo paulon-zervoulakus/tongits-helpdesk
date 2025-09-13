@@ -1,42 +1,38 @@
-from fastapi import APIRouter, WebSocket, Depends, WebSocketDisconnect
-from utils.authentication import AuthUser, get_current_user
+# routes/stream.py
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+import numpy as np, soundfile as sf, tempfile, os
 from repository.voicecpp import VoiceRepositoryCpp
+
 router = APIRouter(prefix="/stream", tags=["stream"])
-
-@router.websocket("/text")
-async def textin(ws: WebSocket):    
-    await ws.accept()
-
-    try:
-        while True:
-            data = await ws.receive_text()
-            print(f"User sent: {data}")
-            await ws.send_text(f"User: {data}")
-    except WebSocketDisconnect:
-        print(f"User disconnected")
 
 @router.websocket("/voicein")
 async def voicein(ws: WebSocket):
     await ws.accept()
-    audio_buffer = b""
+    print("Voice WebSocket connected ✅")
+
+    speech_buffer = bytearray()
 
     try:
         while True:
-            msg = await ws.receive()
+            msg = await ws.receive_bytes()  # direct PCM
+            print(f"Got PCM chunk: {len(msg)} bytes")
+            speech_buffer.extend(msg)
 
-            if "bytes" in msg:
-                audio_buffer += msg["bytes"]
+            # 👇 Example: simple buffer flush on size threshold
+            if len(speech_buffer) > 16000 * 2 * 3:  # ~3 seconds of audio
+                arr = np.frombuffer(speech_buffer, dtype=np.int16)
+                with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+                    sf.write(tf.name, arr, 16000, subtype="PCM_16")
+                    tmp_wav = tf.name
 
-            elif "text" in msg and msg["text"] == "__STOP__":
-                print("Stop signal received")
-                break
+                # run your transcriber
+                voice = VoiceRepositoryCpp()
+                transcribed_text, _ = await voice.transcribe_voice(tmp_wav, "testuser")
+                await ws.send_text(f"TRANSCRIPT::{transcribed_text}")
+                await ws.send_text(f"AI_RESPONSE::I heard {transcribed_text}")
 
-        # Now process accumulated audio
-        voice = VoiceRepositoryCpp()
-        transcribed_text, unique_name = await voice.transcribe_voice(audio_buffer, "testuser")
-        print(unique_name, transcribed_text)
-
-        await ws.send_text(f"Final transcript: {transcribed_text}")
+                os.remove(tmp_wav)
+                speech_buffer = bytearray()  # reset
 
     except WebSocketDisconnect:
-        print("Voice WebSocket disconnected")
+        print("Voice WebSocket disconnected ❌")

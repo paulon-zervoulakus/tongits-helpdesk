@@ -43,84 +43,101 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     };
   }, [audioElement]);
 
-  useEffect(() => {
-    const wsText = new WebSocket("ws://localhost:8000/stream/textin");
-    wsText.binaryType = "arraybuffer";
-    wsTextRef.current = wsText;
+  // useEffect(() => {
+  //   const wsText = new WebSocket("ws://localhost:8000/stream/textin");
+  //   wsText.binaryType = "arraybuffer";
+  //   wsTextRef.current = wsText;
 
-    wsText.onopen = () => console.log("Connected ✅");
-    wsText.onmessage = (evt) => {
-      const userMessage = { text: evt.data, source: "text", sender: "user", ai_response:"" };
-      console.log("Message obj:", userMessage);
-      setMessages((prev) => [...prev, userMessage]);
-    };
+  //   wsText.onopen = () => console.log("Connected ✅");
+  //   wsText.onmessage = (evt) => {
+  //     const userMessage = { text: evt.data, source: "text", sender: "user", ai_response:"" };
+  //     console.log("Message obj:", userMessage);
+  //     setMessages((prev) => [...prev, userMessage]);
+  //   };
 
-    wsText.onclose = () => console.log("Disconnected ❌");
+  //   wsText.onclose = () => console.log("Disconnected ❌");
 
-    // cleanup on unmount
-    return () => {
-      wsText.close();
-    };
-  }, []);
+  //   // cleanup on unmount
+  //   return () => {
+  //     wsText.close();
+  //   };
+  // }, []);
  
 
-  // Handle text message
-  const sendTextMessage = async (text: string) => {
-    if (!text.trim()) return;    
-    setIsLoading(true);    
-    try {
-      if(wsTextRef.current?.readyState === WebSocket.OPEN){
-        wsTextRef.current.send(text.trim())
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // // Handle text message
+  // const sendTextMessage = async (text: string) => {
+  //   if (!text.trim()) return;    
+  //   setIsLoading(true);    
+  //   try {
+  //     if(wsTextRef.current?.readyState === WebSocket.OPEN){
+  //       wsTextRef.current.send(text.trim())
+  //     }
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
   
   // ============= VOICE RECORDING
-  let recorder: MediaRecorder;  
+  let ws: WebSocket | null = null;
+  let audioContext: AudioContext | null = null;
+  let processor: ScriptProcessorNode | null = null;
+  let input: MediaStreamAudioSourceNode | null = null;
+
   const startRecording = async () => {
-    setIsRecording(true);
-
-    // 1. Open WebSocket only when recording starts
-    const ws = new WebSocket("ws://localhost:8000/stream/voicein");
+    ws = new WebSocket("ws://localhost:8000/stream/voicein");
     ws.binaryType = "arraybuffer";
-    wsVoiceRef.current = ws;
 
-    ws.onopen = () => console.log("Voice WS connected ✅");
-    ws.onmessage = (evt) => console.log("Server:", evt.data);
-    ws.onclose = () => console.log("Voice WS closed ❌");
-
-    // 2. Wait until WebSocket is open before sending audio
     ws.onopen = async () => {
-      console.log("Voice WS ready, starting recorder 🎤");
+      console.log("Voice WS connected ✅");
 
+      audioContext = new AudioContext({ sampleRate: 16000 });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      recorder = new MediaRecorder(stream, { mimeType: "audio/webm;codecs=opus" });
+      input = audioContext.createMediaStreamSource(stream);
 
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0 && wsVoiceRef.current?.readyState === WebSocket.OPEN) {
-          wsVoiceRef.current.send(e.data);
+      // 4096 buffer, mono
+      processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+      processor.onaudioprocess = (e) => {
+        const inputData = e.inputBuffer.getChannelData(0); // Float32
+        const pcm16 = floatTo16BitPCM(inputData);
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(pcm16);
+          console.log("Sent PCM chunk:", pcm16.byteLength);
         }
       };
-      recorder.start(500); // send chunks every 500ms
+
+      input.connect(processor);
+      processor.connect(audioContext.destination); // required in some browsers
     };
+
+    ws.onmessage = (evt) => console.log("Server:", evt.data);
+    ws.onclose = () => console.log("WS closed ❌");
+    ws.onerror = (err) => console.error("WS error ❌", err);
   };
 
   const stopRecording = () => {
-    setIsRecording(false);
-
-    // Stop MediaRecorder
-    if (recorder && recorder.state !== "inactive") {
-      recorder.stop();
+    if (processor && input) {
+      input.disconnect(processor);
+      processor.disconnect();
     }
-
-    // Close WebSocket
-    if (wsVoiceRef.current && wsVoiceRef.current.readyState === WebSocket.OPEN) {
-      wsVoiceRef.current.close(1000, "Client stopped recording");
-      wsVoiceRef.current = null;
-    }
+    audioContext?.close();
+    if (ws && ws.readyState === WebSocket.OPEN) ws.close();
+    console.log("Stopped recording");
   };
+
+  // helper
+  function floatTo16BitPCM(float32Array: Float32Array): ArrayBuffer {
+    const buffer = new ArrayBuffer(float32Array.length * 2);
+    const view = new DataView(buffer);
+    let offset = 0;
+    for (let i = 0; i < float32Array.length; i++, offset += 2) {
+      let s = Math.max(-1, Math.min(1, float32Array[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return buffer;
+  }
+
+
 
   // const startRecording = async () => {
   //   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -273,18 +290,21 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
   //   }
   // };
 
-  const handleSendText = () => {
-    sendTextMessage(inputText);
-    setInputText("");
-    inputRef.current?.focus();
-  };
+  // const handleSendText = () => {
+  //   sendTextMessage(inputText);
+  //   setInputText("");
+  //   inputRef.current?.focus();
+  // };
 
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSendText();
-    }
-  };
+  // const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  //   if (e.key === "Enter" && !e.shiftKey) {
+  //     e.preventDefault();
+  //     handleSendText();
+  //   }
+  // };
+
+  const handleKeyPress = () => console.log("handleKeyPress")
+  const handleSendText = () => console.log("handleSendText")
 
   return (
     <div className="bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 items-center justify-center">

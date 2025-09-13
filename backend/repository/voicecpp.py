@@ -25,9 +25,15 @@ class VoiceRepositoryCpp:
         webm_file = os.path.join(UPLOAD_FOLDER, current_user_sub, unique_name)
 
         os.makedirs(os.path.dirname(webm_file), exist_ok=True)
-        # Save file
-        with open(webm_file, "wb") as f:
-            f.write(file)       
+        
+        if isinstance(file, (bytes, bytearray)):  # raw bytes
+            with open(webm_file, "wb") as f:
+                f.write(file)
+        elif isinstance(file, str) and os.path.exists(file):  # path
+            shutil.copy(file, webm_file)
+        else:
+            raise ValueError("Unsupported file type for transcribe_voice") 
+            
         # with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
         #     tmp_path = tmp.name
         base_path = r"D:\development\stt\backend"
@@ -44,7 +50,8 @@ class VoiceRepositoryCpp:
         
         wav_file = webm_file.replace('.webm', '.wav')
         subprocess.run([
-            r"D:\development\stt\voice_model\ffmpeg\bin\ffmpeg.exe", "-i", webm_file, 
+            r"D:\development\stt\voice_model\ffmpeg\bin\ffmpeg.exe", 
+            "-i", webm_file, 
             "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", 
             wav_file
         ], capture_output=True, text=True)
