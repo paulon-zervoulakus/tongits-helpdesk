@@ -78,17 +78,19 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
   // };
   
   // ============= VOICE RECORDING
-  let ws: WebSocket | null = null;
+  
   let audioContext: AudioContext | null = null;
   let processor: ScriptProcessorNode | null = null;
   let input: MediaStreamAudioSourceNode | null = null;
 
   const startRecording = async () => {
-    ws = new WebSocket("ws://localhost:8000/stream/voicein");
+    const ws = new WebSocket("ws://localhost:8000/stream/voicein");
     ws.binaryType = "arraybuffer";
+    wsVoiceRef.current = ws
 
     ws.onopen = async () => {
       console.log("Voice WS connected ✅");
+      setIsRecording(true);
 
       audioContext = new AudioContext({ sampleRate: 16000 });
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -102,7 +104,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
         const pcm16 = floatTo16BitPCM(inputData);
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(pcm16);
-          console.log("Sent PCM chunk:", pcm16.byteLength);
+          // console.log("Sent PCM chunk:", pcm16.byteLength);
         }
       };
 
@@ -110,9 +112,55 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
       processor.connect(audioContext.destination); // required in some browsers
     };
 
-    ws.onmessage = (evt) => console.log("Server:", evt.data);
-    ws.onclose = () => console.log("WS closed ❌");
-    ws.onerror = (err) => console.error("WS error ❌", err);
+    ws.onmessage = (evt) => {
+      let message = evt.data;
+      if (message.startsWith("TRANSCRIPT::")) {        
+        const transcript = message.substring(12);
+        if (transcript.trim() != "") {
+          const userMessage = { 
+            text: transcript, 
+            source: "voice", 
+            sender: "user", 
+            ai_response: "" 
+          };
+          setMessages((prev) => [...prev, userMessage]);
+        }
+  
+      } else if (message.startsWith("AI_RESPONSE::")) {
+        const aiResponse = message.substring(13);
+        if (aiResponse.trim() != ""){
+          const errorMessage = { 
+            text: "", 
+            source: "text", 
+            sender: "system", 
+            ai_response: aiResponse.trim() 
+          };      
+          setMessages((prev) => [...prev, errorMessage]);
+        }
+      }
+    }
+    ws.onclose = () => {      
+      console.log("WS closed ❌");
+      const errorMessage = { 
+        text: "", 
+        source: "text", 
+        sender: "system", 
+        ai_response: "Voice call ended."
+      };      
+      setMessages((prev) => [...prev, errorMessage]);
+      setIsRecording(false);
+    }
+    ws.onerror = (err) => {
+      console.error("WS error ❌", err);
+      const errorMessage = { 
+        text: "", 
+        source: "text", 
+        sender: "system", 
+        ai_response: "Error: Something wen't wrong."
+      };      
+      setMessages((prev) => [...prev, errorMessage]);
+      setIsRecording(false);
+    }
   };
 
   const stopRecording = () => {
@@ -121,8 +169,11 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
       processor.disconnect();
     }
     audioContext?.close();
-    if (ws && ws.readyState === WebSocket.OPEN) ws.close();
-    console.log("Stopped recording");
+    if (wsVoiceRef.current && wsVoiceRef.current.readyState === WebSocket.OPEN){
+      console.log("Stopped recording");
+      wsVoiceRef.current.close(); 
+    } 
+    setIsRecording(false);
   };
 
   // helper
