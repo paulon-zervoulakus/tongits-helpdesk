@@ -1,11 +1,66 @@
 # routes/stream.py
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
-import numpy as np, soundfile as sf, tempfile, os, traceback
+import numpy as np, soundfile as sf, tempfile, os, traceback, json
 from repository.voicecpp import VoiceRepositoryCpp
-import webrtcvad
+import webrtcvad, asyncio
 from collections import deque
+from schema.sound import UPLOAD_TEMP_FOLDER, VOICE_MODEL_PATH, VOICE_CONFIG_PATH
+from piper.voice import PiperVoice
+import builtins
 
 router = APIRouter(prefix="/stream", tags=["stream"])
+voice = VoiceRepositoryCpp()
+# _original_open = builtins.open
+
+# def utf8_open(path, mode="r", *args, **kwargs):
+#     if path.endswith(".json") and "b" not in mode:
+#         return _original_open(path, mode, encoding="utf-8", *args, **kwargs)
+#     return _original_open(path, mode, *args, **kwargs)
+
+# builtins.open = utf8_open
+tts = PiperVoice.load(VOICE_MODEL_PATH, VOICE_CONFIG_PATH)
+# builtins.open = _original_open  # restore
+
+async def process_speech(voiced_frames: bytearray, sample_rate: int, ws: WebSocket):
+    """Run transcription in a separate thread and send results back"""
+    try:
+
+        # Save the collected voiced_frames
+        arr = np.frombuffer(voiced_frames, dtype=np.int16)
+        with tempfile.NamedTemporaryFile(
+            suffix=".wav", 
+            delete=False,
+            dir=UPLOAD_TEMP_FOLDER
+        ) as tf:
+            sf.write(tf.name, arr, sample_rate, subtype="PCM_16")
+            tmp_wav = tf.name  
+        
+        transcribed_text, succeed = await asyncio.to_thread(voice.transcribe_voice, tmp_wav)
+        
+        if succeed and transcribed_text:
+            await ws.send_text(f"TRANSCRIPT::{transcribed_text}")
+            await ws.send_text(f"AI_RESPONSE::{transcribed_text}")
+            
+            # ------------------------- # 
+            # 3️⃣ Generate TTS with Piper ONNX 
+            # # ------------------------- 
+            
+            tts_chunks  = await asyncio.to_thread(tts.synthesize, str(transcribed_text)) 
+            chunk_list = list(tts_chunks)
+            
+            # Concatenate all audio chunks using audio_int16_array (already PCM16)
+            audio_arrays = [chunk.audio_int16_array for chunk in chunk_list]
+            pcm16 = np.concatenate(audio_arrays)
+            
+            # Send the audio data
+            await ws.send_bytes(pcm16.tobytes())
+
+        
+    except Exception as e:
+        print("⚠️ Error during transcription:", e)
+    finally:
+        if os.path.exists(tmp_wav):
+            os.remove(tmp_wav)
 
 @router.websocket("/voicein")
 async def voicein(ws: WebSocket):
@@ -21,8 +76,9 @@ async def voicein(ws: WebSocket):
     ring_buffer = deque(maxlen=10)  # short-term buffer to detect speech end
     speech_buffer = bytearray()
     in_speech = False
-    silence_threshold = 3
-    
+    silence_threshold = 5
+    voiced_frames = bytearray()
+
     try:
         while True:
             msg = await ws.receive_bytes()  # PCM16 (16kHz, mono)
@@ -35,8 +91,8 @@ async def voicein(ws: WebSocket):
 
                 is_speech = vad.is_speech(frame, sample_rate) # detech if the frame has speech or silence
                 ring_buffer.append((frame, is_speech)) # append a tuple [(F1,true), (F2,false), (F3,true), (F4, true), (F5,false), (F6, true), (F7, false), (F8, true), (F9, false),..]
-                
-               
+                               
+                # start of speech
                 if is_speech and not in_speech:
                     in_speech = True
                     voiced_frames = bytearray()
@@ -49,20 +105,9 @@ async def voicein(ws: WebSocket):
                 
                 # if silence detected for long enough → end of speech
                 if in_speech and sum(1 for _, s in ring_buffer if not s) > silence_threshold:
-                    # Save the collected voiced_frames
-                    arr = np.frombuffer(voiced_frames, dtype=np.int16)
-                    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
-                        sf.write(tf.name, arr, sample_rate, subtype="PCM_16")
-                        tmp_wav = tf.name   
-
-                    # run transcriber
-                    voice = VoiceRepositoryCpp()
-                    transcribed_text, _, succeed = await voice.transcribe_voice(tmp_wav, "testuser")
-                    if transcribed_text and succeed:
-                        await ws.send_text(f"TRANSCRIPT::{transcribed_text}")
-                        await ws.send_text(f"AI_RESPONSE::{transcribed_text}")
+                    # Launch async transcription without blocking main loop
+                    asyncio.create_task(process_speech(voiced_frames, sample_rate, ws))                    
                     
-                    os.remove(tmp_wav)
                     in_speech = False
                     ring_buffer.clear()
                     voiced_frames = bytearray()

@@ -82,6 +82,8 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
   let audioContext: AudioContext | null = null;
   let processor: ScriptProcessorNode | null = null;
   let input: MediaStreamAudioSourceNode | null = null;
+  let playbackContext: AudioContext | null = null; // for playing AI audio
+  let playbackQueue: Float32Array[] = [];
 
   const startRecording = async () => {
     const ws = new WebSocket("ws://localhost:8000/stream/voicein");
@@ -113,30 +115,42 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     };
 
     ws.onmessage = (evt) => {
-      let message = evt.data;
-      if (message.startsWith("TRANSCRIPT::")) {        
-        const transcript = message.substring(12);
-        if (transcript.trim() != "") {
-          const userMessage = { 
-            text: transcript, 
-            source: "voice", 
-            sender: "user", 
-            ai_response: "" 
-          };
-          setMessages((prev) => [...prev, userMessage]);
+
+      if(typeof evt.data === "string"){
+        let message = evt.data;
+        if (message.startsWith("TRANSCRIPT::")) {        
+          const transcript = message.substring(12);
+          if (transcript.trim() != "") {
+            const userMessage = { 
+              text: transcript, 
+              source: "voice", 
+              sender: "user", 
+              ai_response: "" 
+            };
+            setMessages((prev) => [...prev, userMessage]);
+          }
+    
+        } else if (message.startsWith("AI_RESPONSE::")) {
+          const aiResponse = message.substring(13);
+          if (aiResponse.trim() != ""){
+            const errorMessage = { 
+              text: "", 
+              source: "text", 
+              sender: "system", 
+              ai_response: aiResponse.trim() 
+            };      
+            setMessages((prev) => [...prev, errorMessage]);
+          }
         }
-  
-      } else if (message.startsWith("AI_RESPONSE::")) {
-        const aiResponse = message.substring(13);
-        if (aiResponse.trim() != ""){
-          const errorMessage = { 
-            text: "", 
-            source: "text", 
-            sender: "system", 
-            ai_response: aiResponse.trim() 
-          };      
-          setMessages((prev) => [...prev, errorMessage]);
+      } else if (evt.data instanceof ArrayBuffer) {
+        // PCM16 audio from Piper
+        const int16 = new Int16Array(evt.data);
+        const float32 = new Float32Array(int16.length);
+        for (let i = 0; i < int16.length; i++) {
+          float32[i] = int16[i] / 32768;
         }
+        playbackQueue.push(float32);
+        playQueuedAudio();
       }
     }
     ws.onclose = () => {      
@@ -188,6 +202,28 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     return buffer;
   }
 
+  // --- play queued AI audio sequentially ---
+  function playQueuedAudio() {
+    if (!playbackQueue.length) return;
+
+    if (!playbackContext) {
+      playbackContext = new AudioContext({ sampleRate: 22050 }); // Piper sample rate
+    }
+
+    const float32 = playbackQueue.shift()!;
+    const buffer = playbackContext.createBuffer(1, float32.length, 22050);
+    buffer.getChannelData(0).set(float32);
+
+    const source = playbackContext.createBufferSource();
+    source.buffer = buffer;
+    source.connect(playbackContext.destination);
+    source.start();
+
+    // Play next audio when done
+    source.onended = () => {
+      if (playbackQueue.length > 0) playQueuedAudio();
+    };
+  }
 
 
   // const startRecording = async () => {
