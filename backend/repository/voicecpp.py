@@ -1,81 +1,62 @@
 import os
-import io
 import uuid
 import subprocess
-from fastapi import UploadFile
+import soundfile as sf  # <-- for direct wav writing
+
 from schema.sound import UPLOAD_FOLDER
 import shutil
-# from sound_model import modelcpp as sound_model
-import tempfile
 
 class VoiceRepositoryCpp:
     def __init__(self):
-        pass
+        base_path = r"D:\development\stt\backend"
+        self.model_path = r"D:\development\stt\voice_model\whisper.cpp\models\ggml-base.en.bin"
+        self.exe_path = r"D:\development\stt\voice_model\whisper.cpp\bin\release\whisper-cli.exe"
+
+        if not os.path.exists(self.model_path):
+            raise FileNotFoundError(f"Model not found: {self.model_path}")
+        if not os.path.exists(self.exe_path):
+            raise FileNotFoundError(f"Executable not found: {self.exe_path}")
+
+        self.base_path = base_path
 
     async def transcribe_voice(self, file: bytes, current_user_sub: str):
-        """ This repositor will save the voice chat and return a Transcribe text
-            Params:
-                file: The uploaded file
-                current_user_sub: Google ID
-                save_file: to save or not
-        """       
-        # Generate unique filename
-        # file_ext = os.path.splitext(file.filename)[-1]        
-        unique_name = f"{uuid.uuid4().hex}.webm"
-        webm_file = os.path.join(UPLOAD_FOLDER, current_user_sub, unique_name)
+        """
+        Save raw PCM16 (16kHz mono) to wav and run whisper.cpp CLI.
+        """
+        unique_name = f"{uuid.uuid4().hex}.wav"
+        wav_file = os.path.join(UPLOAD_FOLDER, current_user_sub, unique_name)
+        os.makedirs(os.path.dirname(wav_file), exist_ok=True)
 
-        os.makedirs(os.path.dirname(webm_file), exist_ok=True)
-        
-        if isinstance(file, (bytes, bytearray)):  # raw bytes
-            with open(webm_file, "wb") as f:
-                f.write(file)
-        elif isinstance(file, str) and os.path.exists(file):  # path
-            shutil.copy(file, webm_file)
+        if isinstance(file, (bytes, bytearray)):
+            # Convert PCM16 buffer -> wav directly
+            import numpy as np
+            arr = np.frombuffer(file, dtype=np.int16)
+            sf.write(wav_file, arr, 16000, subtype="PCM_16")
+        elif isinstance(file, str) and os.path.exists(file):  # already a path
+            shutil.copy(file, wav_file)
         else:
-            raise ValueError("Unsupported file type for transcribe_voice") 
-            
-        # with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-        #     tmp_path = tmp.name
-        base_path = r"D:\development\stt\backend"
-        # Run transcription
-        model_path=r"D:\development\stt\voice_model\whisper.cpp\models\ggml-base.en.bin"
-        if not os.path.exists(model_path):
-            print(f"Model not found: {exe_path}")
-            return "Error: Model not found", unique_name
+            raise ValueError("Unsupported file type for transcribe_voice")
 
-        exe_path = r"D:\development\stt\voice_model\whisper.cpp\bin\release\whisper-cli.exe"
-        if not os.path.exists(exe_path):
-            print(f"Executable not found: {exe_path}")
-            return "Error: Executable not found", unique_name
-        
-        wav_file = webm_file.replace('.webm', '.wav')
-        subprocess.run([
-            r"D:\development\stt\voice_model\ffmpeg\bin\ffmpeg.exe", 
-            "-i", webm_file, 
-            "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", 
-            wav_file
-        ], capture_output=True, text=True)
-
+        # Call whisper.cpp directly
         subp_result = subprocess.run(
             [
-                exe_path,  # binary from release
-                "-m", model_path,
-                "-f", os.path.join(base_path, wav_file)
-            ],            
+                self.exe_path,
+                "-m", self.model_path,
+                "-f", os.path.join(self.base_path, wav_file),
+                "--language", "en"
+            ],
             capture_output=True,
             text=True,
-            cwd=os.path.dirname(os.path.join(base_path, wav_file))
+            cwd=os.path.dirname(os.path.join(self.base_path, wav_file))
         )
 
         if subp_result.returncode == 0:
-            # Extract just the transcription text, remove timestamps
             transcription = subp_result.stdout.strip()
             if transcription:
-                # Remove timestamp format [00:00:00.000 --> 00:00:02.000]
                 import re
                 clean_text = re.sub(r'\[.*?\]\s*', '', transcription).strip()
-                return clean_text, unique_name
+                return clean_text, unique_name, True
             else:
-                return "No transcription found", unique_name
+                return "No transcription found", unique_name, False
         else:
-            return f"Transcription failed: {subp_result.stderr}", unique_name
+            return f"Transcription failed: {subp_result.stderr}", unique_name, False

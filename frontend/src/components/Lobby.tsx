@@ -382,7 +382,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
                 <MessageCircle size={24} />
               </div>
               <div>
-                <h1 className="text-xl font-bold">Game Card Assistant</h1>
+                <h1 className="text-xl font-bold">Customer Support Agentic</h1>
                 <p className="text-purple-100 text-sm">Powered by Maiden AI</p>
               </div>
             </div>
