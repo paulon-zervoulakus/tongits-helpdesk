@@ -6,20 +6,10 @@ import webrtcvad, asyncio
 from collections import deque
 from schema.sound import UPLOAD_TEMP_FOLDER, VOICE_MODEL_PATH, VOICE_CONFIG_PATH
 from piper.voice import PiperVoice
-import builtins
 
 router = APIRouter(prefix="/stream", tags=["stream"])
 voice = VoiceRepositoryCpp()
-# _original_open = builtins.open
-
-# def utf8_open(path, mode="r", *args, **kwargs):
-#     if path.endswith(".json") and "b" not in mode:
-#         return _original_open(path, mode, encoding="utf-8", *args, **kwargs)
-#     return _original_open(path, mode, *args, **kwargs)
-
-# builtins.open = utf8_open
 tts = PiperVoice.load(VOICE_MODEL_PATH, VOICE_CONFIG_PATH)
-# builtins.open = _original_open  # restore
 
 async def process_speech(voiced_frames: bytearray, sample_rate: int, ws: WebSocket):
     """Run transcription in a separate thread and send results back"""
