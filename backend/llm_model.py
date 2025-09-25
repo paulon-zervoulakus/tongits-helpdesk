@@ -2,14 +2,14 @@ from langchain_ollama import ChatOllama
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.checkpoint.sqlite import SqliteSaver
 
-# LLM_MODEL = "llama3.2-vision:latest"
-LLM_MODEL = "llama3.2-vision-8k:latest"
+LLM_MODEL = "llama3.2-vision:latest"
+# LLM_MODEL = "mistral"
 # LLM_MODEL = "gpt-oss:latest"
 # LLM_MODEL = "gpt-oss-2k:latest"
 OLLAMA_BASE_URL = "http://localhost:11434" 
 
 
-LLM_TEMPERATURE = 0
+LLM_TEMPERATURE = 0.2
 
 def setup_persistence(persistence_type="memory"):
     """Setup persistence based on type"""

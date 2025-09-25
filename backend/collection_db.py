@@ -8,10 +8,15 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 GAME_COLLECTION_NAME = "TONGITS_RULES"
 # Global variable to store the collection
 collection = None
+GAME_RULES_PATH = r"D:\development\stt\game_rules"
 # Initialize ChromaDB
-chroma_client = chromadb.PersistentClient(path="./chroma_persist")
+CHOROMA_PERSIST_PATH = Path(GAME_RULES_PATH) / "chroma_persist"
+chroma_client = chromadb.PersistentClient(path=CHOROMA_PERSIST_PATH)
 # Load local embedding model (free, no API key)
 embedder = SentenceTransformer("all-MiniLM-L6-v2")
+
+json_filename = "tongits.jsonl"
+JSON_PATH = Path(GAME_RULES_PATH) / json_filename
 
 def initialize_chroma_collection():
     """Initialize the ChromaDB collection with JSONL data"""
@@ -26,15 +31,15 @@ def initialize_chroma_collection():
         collection = chroma_client.create_collection(name=GAME_COLLECTION_NAME)
         
         # Load and process JSONL
-        jsonl_path = Path("../game_rules/tongits.jsonl")
         
-        if not jsonl_path.exists():
-            raise FileNotFoundError(f"❌ JSONL file not found: {jsonl_path.resolve()}")
         
-        print(f"✅ JSONL found at: {jsonl_path.resolve()}")
+        if not JSON_PATH.exists():
+            raise FileNotFoundError(f"❌ JSONL file not found: {JSON_PATH.resolve()}")
+        
+        print(f"✅ JSONL found at: {JSON_PATH.resolve()}")
         
         docs = []
-        with open(jsonl_path, "r", encoding="utf-8") as f:
+        with open(JSON_PATH, "r", encoding="utf-8") as f:
             for line in f:
                 docs.append(json.loads(line))
         

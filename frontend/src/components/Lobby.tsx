@@ -1,19 +1,32 @@
 import React, { useState, useRef, useEffect } from "react";
 import { Send, Mic, Square, MessageCircle, Play } from "lucide-react";
-import { MessageType, User } from "../types";
+
+// Types (you'll need to import these from your actual types file)
+type MessageType = {
+  text: string;
+  source: string;
+  sender: string;
+  ai_response: string;
+  isVoiceMessage?: boolean;
+  audioUrl?: string;
+};
+
+type User = {
+  name: string;
+  picture?: string;
+};
 
 type LobbyProps = {
-	user: User;
-	onLogout: () => void;
+  user: User;
+  onLogout: () => void;
 }
+
 type VoiceMessagePlayerProps = {
   audioUrl: string;
   isPlaying: boolean;
   onPlay: () => void;
   onStop: () => void;
 }
-
-
 
 const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {  
   const [currentlyPlaying, setCurrentlyPlaying] = useState<number | null>(null);
@@ -28,6 +41,11 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
   const wsTextRef = useRef<WebSocket | null>(null);
   const wsVoiceRef = useRef<WebSocket | null>(null);
+  
+  // Add refs for audio cancellation
+  const currentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const playbackContextRef = useRef<AudioContext | null>(null);
+  const playbackQueueRef = useRef<Float32Array[]>([]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -40,53 +58,107 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
       if (audioElement) {
         audioElement.pause();
       }
+      // Clean up WebAudio resources
+      if (currentAudioSourceRef.current) {
+        try {
+          currentAudioSourceRef.current.stop();
+          currentAudioSourceRef.current.disconnect();
+        } catch (e) {}
+      }
+      if (playbackContextRef.current) {
+        playbackContextRef.current.close();
+      }
     };
   }, [audioElement]);
 
-  // useEffect(() => {
-  //   const wsText = new WebSocket("ws://localhost:8000/stream/textin");
-  //   wsText.binaryType = "arraybuffer";
-  //   wsTextRef.current = wsText;
+  // Audio cancellation function
+  const cancelCurrentAudio = () => {
+    console.log("🛑 Cancelling current audio playback");
+    
+    // Stop current audio source if playing
+    if (currentAudioSourceRef.current) {
+      try {
+        currentAudioSourceRef.current.stop();
+        currentAudioSourceRef.current.disconnect();
+      } catch (e) {
+        // Audio might already be stopped
+      }
+      currentAudioSourceRef.current = null;
+    }
+    
+    // Clear the audio queue
+    playbackQueueRef.current = [];
+    
+    // Close and recreate audio context for clean state
+    if (playbackContextRef.current) {
+      playbackContextRef.current.close();
+      playbackContextRef.current = null;
+    }
+    
+    console.log("✅ Audio cancelled and queue cleared");
+  };
 
-  //   wsText.onopen = () => console.log("Connected ✅");
-  //   wsText.onmessage = (evt) => {
-  //     const userMessage = { text: evt.data, source: "text", sender: "user", ai_response:"" };
-  //     console.log("Message obj:", userMessage);
-  //     setMessages((prev) => [...prev, userMessage]);
-  //   };
+  // Modified play queued audio function
+  const playQueuedAudio = () => {
+    if (!playbackQueueRef.current.length) return;
 
-  //   wsText.onclose = () => console.log("Disconnected ❌");
+    if (!playbackContextRef.current) {
+      playbackContextRef.current = new AudioContext({ sampleRate: 22050 }); // Piper sample rate
+    }
 
-  //   // cleanup on unmount
-  //   return () => {
-  //     wsText.close();
-  //   };
-  // }, []);
- 
+    const float32 = playbackQueueRef.current.shift()!;
+    const buffer = playbackContextRef.current.createBuffer(1, float32.length, 22050);
+    buffer.getChannelData(0).set(float32);
 
-  // // Handle text message
-  // const sendTextMessage = async (text: string) => {
-  //   if (!text.trim()) return;    
-  //   setIsLoading(true);    
-  //   try {
-  //     if(wsTextRef.current?.readyState === WebSocket.OPEN){
-  //       wsTextRef.current.send(text.trim())
-  //     }
-  //   } finally {
-  //     setIsLoading(false);
-  //   }
-  // };
-  
+    const source = playbackContextRef.current.createBufferSource();
+    source.buffer = buffer;
+    source.connect(playbackContextRef.current.destination);
+    
+    // Store reference to current playing source
+    currentAudioSourceRef.current = source;
+    
+    source.start();
+
+    // Play next audio when done
+    source.onended = () => {
+      // Clear reference when audio ends naturally
+      if (currentAudioSourceRef.current === source) {
+        currentAudioSourceRef.current = null;
+      }
+      
+      // Continue playing queue if not cancelled
+      if (playbackQueueRef.current.length > 0) {
+        playQueuedAudio();
+      }
+    };
+  };
+
   // ============= VOICE RECORDING
   
   let audioContext: AudioContext | null = null;
   let processor: ScriptProcessorNode | null = null;
   let input: MediaStreamAudioSourceNode | null = null;
-  let playbackContext: AudioContext | null = null; // for playing AI audio
-  let playbackQueue: Float32Array[] = [];
+  
+  // Add silence detection variables
+  const silenceThreshold = 0.01; // Adjust this value (0.001 = very sensitive, 0.1 = less sensitive)
+  const minSilenceDuration = 500; // milliseconds of silence before stopping transmission
+  let lastSoundTime = Date.now();
+  let isSendingAudio = false;
+
+  // Function to detect if audio contains speech
+  const hasAudioActivity = (float32Array: Float32Array): boolean => {
+    let sum = 0;
+    for (let i = 0; i < float32Array.length; i++) {
+      sum += Math.abs(float32Array[i]);
+    }
+    const average = sum / float32Array.length;
+    return average > silenceThreshold;
+  };
 
   const startRecording = async () => {
-    const ws = new WebSocket("ws://localhost:8000/stream/voicein");
+    const token = localStorage.getItem("access_token") || "not found"     
+    const ws = new WebSocket(`ws://localhost:8000/stream/voicein?token=${encodeURIComponent(token)}`);
+
     ws.binaryType = "arraybuffer";
     wsVoiceRef.current = ws
 
@@ -103,10 +175,33 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
 
       processor.onaudioprocess = (e) => {
         const inputData = e.inputBuffer.getChannelData(0); // Float32
-        const pcm16 = floatTo16BitPCM(inputData);
-        if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(pcm16);
-          // console.log("Sent PCM chunk:", pcm16.byteLength);
+        
+        // Check if there's audio activity
+        const hasActivity = hasAudioActivity(inputData);
+        const now = Date.now();
+        
+        if (hasActivity) {
+          lastSoundTime = now;
+          if (!isSendingAudio) {
+            console.log("🎤 Started detecting speech - beginning audio transmission");
+            isSendingAudio = true;
+          }
+        }
+        
+        // Only send audio if:
+        // 1. There's current activity, OR
+        // 2. We were recently sending and haven't been silent long enough
+        const timeSinceLastSound = now - lastSoundTime;
+        const shouldSend = hasActivity || (isSendingAudio && timeSinceLastSound < minSilenceDuration);
+        
+        if (shouldSend) {
+          const pcm16 = floatTo16BitPCM(inputData);
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(pcm16);
+          }
+        } else if (isSendingAudio && timeSinceLastSound >= minSilenceDuration) {
+          console.log("🔇 Silence detected - stopping audio transmission");
+          isSendingAudio = false;
         }
       };
 
@@ -117,7 +212,14 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     ws.onmessage = (evt) => {
 
       if(typeof evt.data === "string"){
-        let message = evt.data;
+        let message = evt.data;       
+
+        // Handle audio cancellation - ADD THIS
+        if (message === "CANCEL_AUDIO") {
+          cancelCurrentAudio();
+          return;
+        }
+
         if (message.startsWith("TRANSCRIPT::")) {        
           const transcript = message.substring(12);
           if (transcript.trim() != "") {
@@ -149,7 +251,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
         for (let i = 0; i < int16.length; i++) {
           float32[i] = int16[i] / 32768;
         }
-        playbackQueue.push(float32);
+        playbackQueueRef.current.push(float32);
         playQueuedAudio();
       }
     }
@@ -178,6 +280,14 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
   };
 
   const stopRecording = () => {
+    // Cancel current audio playback when stopping recording
+    cancelCurrentAudio();
+    
+    // Reset silence detection variables
+    isSendingAudio = false;
+    lastSoundTime = Date.now();
+    
+    // Your existing stopRecording code
     if (processor && input) {
       input.disconnect(processor);
       processor.disconnect();
@@ -201,124 +311,6 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     }
     return buffer;
   }
-
-  // --- play queued AI audio sequentially ---
-  function playQueuedAudio() {
-    if (!playbackQueue.length) return;
-
-    if (!playbackContext) {
-      playbackContext = new AudioContext({ sampleRate: 22050 }); // Piper sample rate
-    }
-
-    const float32 = playbackQueue.shift()!;
-    const buffer = playbackContext.createBuffer(1, float32.length, 22050);
-    buffer.getChannelData(0).set(float32);
-
-    const source = playbackContext.createBufferSource();
-    source.buffer = buffer;
-    source.connect(playbackContext.destination);
-    source.start();
-
-    // Play next audio when done
-    source.onended = () => {
-      if (playbackQueue.length > 0) playQueuedAudio();
-    };
-  }
-
-
-  // const startRecording = async () => {
-  //   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  //   const audioCtx = new AudioContext();
-  //   const source = audioCtx.createMediaStreamSource(stream);
-
-  //   // Create ScriptProcessorNode (old API but widely supported)
-  //   const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-  //   source.connect(processor);
-  //   processor.connect(audioCtx.destination);
-
-  //   processor.onaudioprocess = (e) => {
-  //     const inputData = e.inputBuffer.getChannelData(0); // Float32 samples
-  //     const int16Data = floatTo16BitPCM(inputData);
-
-  //     if (wsVoiceRef.current?.readyState === WebSocket.OPEN) {
-  //       wsVoiceRef.current.send(int16Data.buffer);
-  //     }
-  //   };
-  // };
-
-  // // helper to convert Float32 → Int16
-  // function floatTo16BitPCM(float32Array: Float32Array) {
-  //   const buffer = new ArrayBuffer(float32Array.length * 2);
-  //   const view = new DataView(buffer);
-  //   let offset = 0;
-  //   for (let i = 0; i < float32Array.length; i++, offset += 2) {
-  //     let s = Math.max(-1, Math.min(1, float32Array[i]));
-  //     view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-  //   }
-  //   return new Int16Array(buffer);
-  // }
-
-  // Start voice recording
-  // const startRecording = async () => {
-  //   try {
-  //     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  //     const recorder = new MediaRecorder(stream);
-  //     let chunks: Blob[] = [];
-
-  //     recorder.ondataavailable = (e) => chunks.push(e.data);
-
-  //     recorder.onstop = async () => {
-  //       setIsLoading(true);
-  //       const blob = new Blob(chunks, { type: "audio/webm" });
-
-  //       // Create audio URL for playback
-  //       const audioUrl = URL.createObjectURL(blob);  
-
-  //       const formData = new FormData();
-  //       formData.append("file", blob, "voice.webm");
-
-  //       try {
-  //         const response = await fetch("http://localhost:8000/api/transcribe", {
-  //           method: "POST",
-  //           body: formData,
-  //           headers: {
-  //             Authorization: `Bearer ${localStorage.getItem("access_token")}`,
-  //           }
-          
-  //         });
-  //         const data = await response.json();          
-  //         setMessages((prev) => [...prev, { ...data, sender: "user", audioBlob: blob, audioUrl: audioUrl, isVoiceMessage:true }]);
-          
-  //         // Add assistant response
-  //         setMessages((prev) => [...prev, { ...data, sender: "assistant" }]);
-
-  //       } catch (error) {
-  //         console.error("Error sending voice message:", error);
-  //         setMessages((prev) => [...prev, { 
-  //           text: "Sorry, there was an error processing your voice message.", 
-  //           ai_response: "",
-  //           source: "error", 
-  //           sender: "assistant",
-  //           isVoiceMessage: true,
-  //           audioBlob: blob,
-  //           audioUrl: audioUrl
-  //         }]);
-  //       } finally {
-  //         setIsLoading(false);
-  //       }
-        
-  //       // Clean up stream
-  //       stream.getTracks().forEach(track => track.stop());
-  //     };
-
-  //     recorder.start();
-  //     setMediaRecorder(recorder);
-  //     setRecording(true);
-  //   } catch (error) {
-  //     console.error("Error accessing microphone:", error);
-  //     alert("Could not access microphone. Please check permissions.");
-  //   }
-  // };
 
   const VoiceMessagePlayer:React.FC<VoiceMessagePlayerProps> = ({ audioUrl, isPlaying, onPlay, onStop }) => {
     return (
@@ -368,27 +360,6 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     setCurrentlyPlaying(null);
     setAudioElement(null);
   };
-
-  // // Stop voice recording
-  // const stopRecording = () => {
-  //   if (mediaRecorder) {
-  //     mediaRecorder.stop();
-  //     setRecording(false);
-  //   }
-  // };
-
-  // const handleSendText = () => {
-  //   sendTextMessage(inputText);
-  //   setInputText("");
-  //   inputRef.current?.focus();
-  // };
-
-  // const handleKeyPress = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-  //   if (e.key === "Enter" && !e.shiftKey) {
-  //     e.preventDefault();
-  //     handleSendText();
-  //   }
-  // };
 
   const handleKeyPress = () => console.log("handleKeyPress")
   const handleSendText = () => console.log("handleSendText")
@@ -545,7 +516,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
             )}
           </div>
         </div>
-      </div>`
+      </div>
     </div>
   );
 }

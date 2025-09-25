@@ -6,7 +6,7 @@ from sqlalchemy.ext.declarative import declarative_base
 
 
 # Database
-DATABASE_URL = "sqlite:///./bookings.db"
+DATABASE_URL = "sqlite:///D:/development/stt/backend/bookings.db"
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
