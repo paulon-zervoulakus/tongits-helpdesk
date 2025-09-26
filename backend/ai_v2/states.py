@@ -19,13 +19,16 @@ def replace_or_keep(prev: list, new: list):
 # --- STATE ---
 class AgentState(TypedDict):    
     input_message: Annotated[str, lambda prev, new: new if new is not None else prev]
-    intent: Annotated[List[str], lambda prev, new: new if new is not None else prev]
-    intent_list: Annotated[IntentList, lambda prev, new: new if new is not None else prev]
     messages: Annotated[List[BaseMessage], add_messages]
     raw_messages: Annotated[List[str], replace_or_keep]
+    short_message: Annotated[str, lambda prev, new: new if new is not None else prev]
+
+    intent: Annotated[List[str], lambda prev, new: new if new is not None else prev]
+    intent_list: Annotated[IntentList, lambda prev, new: new if new is not None else prev]
+
     fullname: Annotated[str, lambda prev, new: new if new is not None else prev]
     email: Annotated[str, lambda prev, new: new if new is not None else prev]
-    stage: Annotated[int, lambda prev, new: new if new is not None else prev]
-    nickname: Annotated[str, lambda prev, new: new if new is not None else prev]
-    availability: Annotated[str, lambda prev, new: new if new is not None else prev]
-    # short_messages: Annotated[List[str], lambda prev, new: new if new is not None else prev]
+    stage: Annotated[str, lambda prev, new: new if new is not None else prev]
+    nickname: Annotated[str, lambda prev, new: new if new is not None else prev]    
+    event_title: Annotated[str, lambda prev, new: new if new is not None else prev]
+    event_date: Annotated[str, lambda prev, new: new if new is not None else prev]

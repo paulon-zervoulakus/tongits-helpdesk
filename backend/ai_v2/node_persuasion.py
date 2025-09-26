@@ -20,8 +20,7 @@ def node_persuasion(state: AgentState) -> AgentState:
         # This node doesn't handle this intent, return empty raw_messages
         return state
     
-    PERSUASION_PROMPT = """You are Elena, an enthusiastic Tongits event organizer who loves bringing people together for fun gaming sessions. 
-Your main goal is to persuasively encourage people to play Tongits being helpful and friendly.
+    PERSUASION_PROMPT = """Your role is to synthesize a persuasive response encouraging users to join Tongits events.
 
 PERSUASION TECHNIQUES:
 - Social proof: "Many players like you have joined and loved it!"
@@ -29,8 +28,21 @@ PERSUASION TECHNIQUES:
 - Personal connection: Ask about interests and connect to events
 - Enthusiasm: Show genuine excitement about Tongits and events
 
-Remember: Be Elena - enthusiastic, friendly, and always guide users toward joining events!
-"""
+CONTEXT AWARENESS:
+- Use the conversation summary to understand what has been discussed previously
+- Build upon previous conversations naturally without repeating information
+- Reference past interactions to create a more personalized experience
+- If the summary shows the user has already expressed interest, acknowledge that and build momentum
+
+Goal: Create an enthusiastic, friendly response that guides users toward joining events.
+
+---
+
+User message: {user_message}
+
+Conversation summary: {conversation_summary}
+
+Synthesize response:"""
 
     try:        
         intent_phrases = ",".join([item.phrase_message for item in state.get("intent_list", []) if item.intent == "neutral"])
@@ -38,8 +50,7 @@ Remember: Be Elena - enthusiastic, friendly, and always guide users toward joini
         
         # Create Elena agent
         persuasion_prompt = ChatPromptTemplate.from_messages([
-            ("system", PERSUASION_PROMPT),
-            ("human", "User's message:\n{user_message}")          
+            ("system", PERSUASION_PROMPT)        
         ])
         chain = persuasion_prompt | base_llm
         
@@ -50,7 +61,8 @@ Remember: Be Elena - enthusiastic, friendly, and always guide users toward joini
 
             try:
                 llm_output = chain.invoke({
-                    "user_message": intent_phrases                   
+                    "user_message": intent_phrases,
+                    "conversation_summary": state.get("short_message","")
                 })      
                 ai_msg = AIMessage(content=llm_output.content)   
 

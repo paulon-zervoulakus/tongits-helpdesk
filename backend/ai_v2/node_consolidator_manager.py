@@ -10,35 +10,43 @@ from langgraph.graph.state import RunnableConfig
 def node_consolidator_manager(state: AgentState, config: RunnableConfig) -> AgentState:
     """This node is a consolidator of all raw message coming from the AI and the tools results."""
     
-    PERSUASION_PROMPT = """Your task naturally based on the users question and relevant to the raw_messages, this raw_messages is your facts so use it to form a natural conversation.
+    PERSUASION_PROMPT = """Your task is to respond naturally based on the user's question and relevant information from the raw_messages (your primary facts) and conversation summary (for context).
 
 INSTRUCTIONS:
-1. If the information below contains relevant details to answer the user's question, use that information to provide a helpful, natural response
-2. If there's no relevant information available, then provide encouragement and persuasion to join events
-3. Always respond naturally and conversationally - don't repeat the raw information or use labels like "RESPONSE:"
-4. Be factual to your answer based on the raw_messages, and do not use place holder.
-5. Mention the names from the raw_messages and not the place holder.
-6. Include ALL relevant details from the raw_messages - don't leave out important information like organizer names, full event descriptions, location, time and date, or specific details.
+1. Use the raw_messages as your primary source of facts to answer the user's question
+2. Reference the conversation summary for additional context about what has been discussed previously
+3. If the information contains relevant details to answer the user's question, use that information to provide a helpful, natural response
+4. If there's no relevant information available, then provide encouragement and persuasion to join events
+5. Always respond naturally and conversationally - don't repeat the raw information or use labels like "RESPONSE:"
+6. Be factual based on the raw_messages, and do not use placeholders
+7. Mention the actual names from the raw_messages, not placeholders
+8. Include ALL relevant details from the raw_messages - don't leave out important information like organizer names, full event descriptions, location, time and date, or specific details
+9. Use the conversation summary to avoid repeating information already discussed and to maintain context
 
 EXAMPLES:
 
 User: "When is the next event?"
 Available information: "Community Game Night on Tuesday, September 30 at 07:00 PM"
+Conversation summary: "User previously asked about game types available"
 Good response: "The next event is the Community Game Night happening on Tuesday, September 30 at 7:00 PM."
 
 User: "What events do you have?"  
 Available information: "Community Game Night on Tuesday, September 30 at 07:00 PM - A fun night of Tongits and other card games. (Organized by Paulon Zervoulakus)"
+Conversation summary: "New conversation, no previous context"
 Good response: "We have a Community Game Night scheduled for Tuesday, September 30 at 7:00 PM. It's a fun night of Tongits and other card games, organized by Paulon Zervoulakus."
 
 User: "I'm thinking about joining"
 Available information: [empty]
-Good response: "That's wonderful! Our Tongits events are a great way to meet fellow players, improve your skills, and have a fantastic time. Many players have joined and really enjoyed the experience!"
+Conversation summary: "User has been asking about events and showed interest"
+Good response: "That's wonderful! Based on our conversation, I can see you're interested in our events. Our Tongits events are a great way to meet fellow players, improve your skills, and have a fantastic time. Many players have joined and really enjoyed the experience!"
 
 ---
 
 User question: {user_message}
 
 Available information: {raw_messages}
+
+Summary of conversation: {conversation_summary}
 
 Provide a natural, helpful response:"""
 
@@ -68,7 +76,8 @@ Provide a natural, helpful response:"""
             try:
                 llm_output = chain.invoke({
                     "raw_messages": raw_messages,
-                    "user_message": user_message
+                    "user_message": user_message,
+                    "conversation_summary": state.get("short_message","")
                 }, config=config)      
             except Exception as e:
                 # LangGraph provides more specific exception types

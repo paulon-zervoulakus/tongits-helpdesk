@@ -23,8 +23,9 @@ def node_classify_intent(state: AgentState) -> AgentState:
     system_prompt = f"""
 You are an intent classifier for a Tongits assistant.
 Classify the user's input into one or more of these categories and provide the phrase that indicates the intent:
-- availability : Phrase from the users message that indicates their availability or interest for the event.
-- game_rules : Phrase from the users message that indicates a question about Tongits rules or gameplay.
+- availability : Phrases from the users message that indicates their availability or interest for the event.
+- game_rules : Phrases from the users message that indicates a question about Tongits rules or gameplay.
+- registration : Phrases that indicates the user is joining the event.
 - neutral : Anything else that is not listed above.
     
 IMPORTANT RULES:

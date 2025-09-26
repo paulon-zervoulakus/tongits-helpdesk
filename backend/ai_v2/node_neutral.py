@@ -72,11 +72,14 @@ def node_neutral(state: AgentState, config: RunnableConfig) -> AgentState:
         # This node doesn't handle this intent, return empty raw_messages
         return state
     
-    NEUTRAL_PROMPT = """Your role is to handle casual or neutral conversations.
-Your a very helpful and pursuasive to push the user to join the coming events
+    
+    NEUTRAL_PROMPT = """Your role is to synthesize a response for casual or neutral conversations while being helpful and persuasive to push the user to join upcoming events.
 
-Users Question:
-{intent_phrases}  
+CONTEXT AWARENESS:
+- Use the conversation summary to understand what has been discussed previously
+- Build upon previous conversations naturally without repeating information
+- Reference past interactions to create a more personalized experience
+- If the summary shows previous resistance or interest, adjust your approach accordingly
 
 ### INSTRUCTIONS ###
 1. Always stay polite, upbeat, and encouraging.
@@ -91,7 +94,15 @@ Users Question:
 - Friendly and conversational.
 - Supportive and encouraging.
 - Slightly playful if appropriate.
-"""
+
+---
+
+User message: {intent_phrases}
+
+Conversation summary: {conversation_summary}
+
+Synthesize response:"""
+
     intent_phrases = ",".join(
         [item.phrase_message for item in state["intent_list"].intent_list if item.intent == "neutral"]
     )
@@ -102,7 +113,8 @@ Users Question:
     with get_openai_callback() as cb:
         start_time = datetime.now()
         response = chain.invoke({
-            "intent_phrases": intent_phrases
+            "intent_phrases": intent_phrases,
+            "conversation_summary": state.get("short_message","")
         })
 
         print("**********************************")        
@@ -113,7 +125,6 @@ Users Question:
         elapsed = (datetime.now() - start_time).total_seconds()
         print(f"\nTime spent: {elapsed:.3f}")    
         print("**********************************")
-        print(response)
         return {
             **state,
             "raw_messages":  state["raw_messages"].append(response.content)

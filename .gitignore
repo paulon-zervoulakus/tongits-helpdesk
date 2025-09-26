@@ -4,3 +4,4 @@ backend/chroma_persist/*
 backend/uploads/*
 **/*.pyc
 voice_model/*
+game_rules/chroma_persist/

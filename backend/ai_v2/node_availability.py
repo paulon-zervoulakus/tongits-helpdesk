@@ -23,8 +23,7 @@ def node_availability(state: AgentState, config: RunnableConfig) -> AgentState:
         # This node doesn't handle this intent, return empty raw_messages
         return state
     
-    AVAILABILITY_PROMPT = """
-You are Maiden, the Tongits assistant. Answer questions ONLY about events.
+    AVAILABILITY_PROMPT = """Your role is to synthesize a response to answer questions ONLY about events.
 
 TOOLS:
 You have access to the following tools:

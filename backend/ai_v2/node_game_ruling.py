@@ -91,8 +91,7 @@ def node_game_ruling(state: AgentState, config: RunnableConfig) -> AgentState:
     if "game_rules" not in state.get("intent", []):
         return state  # Skip if not relevant
     
-    GAME_RULES_PROMPT = """
-You are an assistant. Answer questions based on the result of the tool here {tool_names}.
+    GAME_RULES_PROMPT = """Your role is to synthesize a response to answer questions based on the result of the tool here {tool_names}.
 The relevant question is the {user_message}, analyze the result based on the user's message.
 
 TOOLS:
