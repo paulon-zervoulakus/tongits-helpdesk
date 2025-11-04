@@ -153,7 +153,7 @@ Begin!
 """
 
     intent_phrases = ",".join(
-        [item.phrase_message for item in state["intent_list"].intent_list if item.intent == "game_rules"]
+        [item.phrase_message for item in state["intent_list"] if item.intent == "game_rules"]
     )
 
     prompt = ChatPromptTemplate.from_messages([
@@ -201,7 +201,7 @@ Begin!
             print(f"Completion tokens: {cb.completion_tokens}")
             print(f"Total tokens: {cb.total_tokens}")
             elapsed = (datetime.now() - start_time).total_seconds()
-            print(f"\nTime spent: {elapsed:.3f}")
+            print(f"\nTime spent node_game_ruling: {elapsed:.3f}")
             print("**********************************")
         except Exception as e:
             # LangGraph provides more specific exception types

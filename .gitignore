@@ -2,6 +2,7 @@
 frontend/node_modules/*
 backend/chroma_persist/*
 backend/uploads/*
+backend/temp/*
 **/*.pyc
 voice_model/*
 game_rules/chroma_persist/

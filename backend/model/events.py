@@ -9,6 +9,7 @@ class Happenings(Base):
     id = Column(Integer, primary_key=True, index=True)
     title = Column(String, unique=True, index=True)
     description = Column(String)
+    event_outcome = Column(String, nullable=True)
     picture = Column(String, nullable=True)
     date_of_event = Column(DateTime(timezone=True), nullable=True)
     organizer = Column(String, nullable=True)
@@ -23,6 +24,7 @@ class Happenings(Base):
             "id": self.id,
             "title": self.title,
             "description": self.description,
+            "event_outcome": self.event_outcome,
             "picture": self.picture,
             "date_of_event": self.date_of_event,
             "organizer": self.organizer,

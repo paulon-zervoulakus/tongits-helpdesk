@@ -20,37 +20,17 @@ graph = BuildGraph()
 # Track active tasks per user
 active_tasks: Dict[str, asyncio.Task] = {}
 
-async def process_speech(voiced_frames: bytearray, sample_rate: int, ws: WebSocket, user: dict, current_message_parts: list):
-    """Run transcription in a separate thread and send results back"""
+async def process_speech(voiced_frames: bytes, sample_rate: int, ws: WebSocket, user: dict, current_message_parts: list):
+    """Handle one full utterance (PCM16) from frontend"""
     user_id = user["sub"]
-    
+    tmp_wav = None
     try:
-        # Save the collected voiced_frames
-        arr = np.frombuffer(voiced_frames, dtype=np.int16)
-        with tempfile.NamedTemporaryFile(
-            suffix=".wav", 
-            delete=False,
-            dir=UPLOAD_TEMP_FOLDER
-        ) as tf:
+        arr = np.frombuffer(voiced_frames, dtype=np.int16)  # PCM16 little-endian
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False, dir=UPLOAD_TEMP_FOLDER) as tf:
+            tmp_wav = tf.name
             sf.write(tf.name, arr, sample_rate, subtype="PCM_16")
-            tmp_wav = tf.name  
-        
-        # # Cancel any currently running graph task for this user before receiving transcription
-        # # If none active_tasks entry exists, proceed directly
-        # if user_id in active_tasks and not active_tasks[user_id].done():
-        #     print(f"🛑 Cancelling current graph task for user {user_id}")            
-        #     # Send cancellation signal to frontend to stop current audio playback
-        #     await ws.send_text("CANCEL_AUDIO")
-            
-        #     active_tasks[user_id].cancel()
-            
-        #     # Wait a moment for cancellation to complete
-        #     try:
-        #         await asyncio.wait_for(active_tasks[user_id], timeout=0.1)
-        #     except (asyncio.CancelledError, asyncio.TimeoutError):
-        #         pass
 
-        await ws.send_text(f"BEFORE TRANSCRIPTION")
+        await ws.send_text("BEFORE TRANSCRIPTION")
         transcribed_text, succeed = await asyncio.to_thread(voice.transcribe_voice, tmp_wav)
         
         # Ensure it's a string
@@ -71,6 +51,8 @@ async def process_speech(voiced_frames: bytearray, sample_rate: int, ws: WebSock
             # Combine all message parts into one message
             combined_message = " ".join(current_message_parts)
             
+            if combined_message == "":
+                return
             # -------------------------
             # AI Implementation - Restart with combined message
             # -------------------------
@@ -86,18 +68,30 @@ async def process_speech(voiced_frames: bytearray, sample_rate: int, ws: WebSock
                     "checkpoint_ns": "chat"
                 }    
             }
-            
-            print(f"🚀 Invoking graph with combined message: '{combined_message}'")
-            
+                        
             try:
                 # Create new graph task
-                graph_task = asyncio.create_task(graph.ainvoke(init_state, config=config))
-                active_tasks[user_id] = graph_task
+                # graph_task = asyncio.create_task(graph.ainvoke(init_state, config=config))
+                # active_tasks[user_id] = graph_task
                 
-                # Wait for graph completion
-                reply = await graph_task
+                # # Wait for graph completion
+                # reply = await graph_task
                 
                 # Only clear message parts if we got a successful complete response
+                reply = {
+                    "messages": [
+                        {
+                            "role": "system",
+                            "content": combined_message
+                        }
+                    ],
+                    "graph": {
+                        "type": "none",
+                        "data": [],
+                        "note": "Placeholder graph response"
+                    }
+                }
+                graph_task = None
                 current_message_parts.clear()
                 print(f"✅ Graph completed successfully, cleared message parts")
                 await ws.send_text("GRAPH_COMPLETE") # Delete soon
@@ -110,7 +104,7 @@ async def process_speech(voiced_frames: bytearray, sample_rate: int, ws: WebSock
                 traceback.print_exc()
                 return
             finally:
-                # Clean up the task reference
+                # Clean up the task reference                
                 if user_id in active_tasks and active_tasks[user_id] == graph_task:
                     del active_tasks[user_id]
             
@@ -123,6 +117,7 @@ async def process_speech(voiced_frames: bytearray, sample_rate: int, ws: WebSock
                     last_ai_message = messages[-1]
                     
                     message_text = last_ai_message.content if hasattr(last_ai_message, 'content') else str(last_ai_message)
+                    
                     if message_text:
                         await ws.send_text(f"AI_RESPONSE::{message_text}")
                         
@@ -149,32 +144,32 @@ async def process_speech(voiced_frames: bytearray, sample_rate: int, ws: WebSock
                         except asyncio.CancelledError:
                             print(f"TTS task cancelled for user {user_id}")
                             return
-        
     except Exception as e:
         print("⚠️ Error during transcription:", e)
     finally:
         if 'tmp_wav' in locals() and os.path.exists(tmp_wav):
             os.remove(tmp_wav)
 
-
 @router.websocket("/voicein")
 async def voicein(ws: WebSocket):
     print("New WebSocket connection attempt")
     await ws.accept()
+
     token = ws.query_params.get("token")
-    is_valid, result_validation = await validate_access_token(token)
-    if not is_valid:
+    is_valid_token, result_validation = await validate_access_token(token)
+    if not is_valid_token:
         print(f"❌ Invalid token, closing connection: {result_validation}")
         await ws.close(code=result_validation)
         return
     
+    print("Voice WebSocket connected ✅")
+
     user = result_validation.to_dict()
     user_id = user["sub"]
 
-    print("Voice WebSocket connected ✅")
 
     # VAD setup
-    vad = webrtcvad.Vad(2)  # 0=least aggressive, 3=most aggressive    
+    vad = webrtcvad.Vad(1)  # 0=least aggressive, 3=most aggressive    
     sample_rate = 16000
     frame_ms = 30  # 10, 20, or 30 ms only allowed
     frame_bytes = int(sample_rate * frame_ms / 1000) * 2  # int16=2 bytes
@@ -190,43 +185,49 @@ async def voicein(ws: WebSocket):
 
     try:
         while True:
-            msg = await ws.receive_bytes()  # PCM16 (16kHz, mono)
-            speech_buffer.extend(msg)
+            pcm_bytes = await ws.receive_bytes()   # receive full utterance
+            
+            # directly launch transcription for this utterance
+            asyncio.create_task(
+                process_speech(pcm_bytes, 16000, ws, user, current_message_parts)
+            )
+            # msg = await ws.receive_bytes()  # PCM16 (16kHz, mono)
+            # speech_buffer.extend(msg)
 
-            # process in fixed-size frames for VAD
-            while len(speech_buffer) >= frame_bytes:
-                frame = speech_buffer[:frame_bytes]
-                speech_buffer = speech_buffer[frame_bytes:]
+            # # process in fixed-size frames for VAD
+            # while len(speech_buffer) >= frame_bytes:
+            #     frame = speech_buffer[:frame_bytes]
+            #     speech_buffer = speech_buffer[frame_bytes:]
 
-                is_speech = vad.is_speech(frame, sample_rate) # detect if the frame has speech or silence
-                ring_buffer.append((frame, is_speech)) # append a tuple [(F1,true), (F2,false), (F3,true), (F4, true), (F5,false), (F6, true), (F7, false), (F8, true), (F9, false),..]
+            #     is_speech = vad.is_speech(frame, sample_rate) # detect if the frame has speech or silence
+            #     ring_buffer.append((frame, is_speech)) # append a tuple [(F1,true), (F2,false), (F3,true), (F4, true), (F5,false), (F6, true), (F7, false), (F8, true), (F9, false),..]
                                
 
-                # start of speech
-                if is_speech and not in_speech:
-                    in_speech = True
-                    voiced_frames = bytearray()
-                    for f, _ in ring_buffer:
-                        voiced_frames.extend(f)
-                    # Do NOT clear ring_buffer here; let it accumulate for silence detection
+            #     # start of speech
+            #     if is_speech and not in_speech:
+            #         in_speech = True
+            #         voiced_frames = bytearray()
+            #         for f, _ in ring_buffer:
+            #             voiced_frames.extend(f)
+            #         # Do NOT clear ring_buffer here; let it accumulate for silence detection
 
-                if in_speech:
-                    voiced_frames.extend(frame)
+            #     if in_speech:
+            #         voiced_frames.extend(frame)
                 
-                # if silence detected for long enough → end of speech
-                if in_speech and sum(1 for _, s in ring_buffer if not s) > silence_threshold:                    
-                    # Launch async transcription without blocking main loop
-                    print("🛫 Detected end of speech, launching transcription task")
-                    task = asyncio.create_task(
-                        process_speech(voiced_frames, sample_rate, ws, user, current_message_parts)
-                    )
+            #     # if silence detected for long enough → end of speech
+            #     if in_speech and sum(1 for _, s in ring_buffer if not s) > silence_threshold:                    
+            #         # Launch async transcription without blocking main loop
+            #         print("🛫 Detected end of speech, launching transcription task")
+            #         task = asyncio.create_task(
+            #             process_speech(voiced_frames, sample_rate, ws, user, current_message_parts)
+            #         )
                     
-                    in_speech = False
-                    ring_buffer.clear()  # Only clear here, after silence detected
-                    voiced_frames = bytearray()
-                else:
-                    msg = f"...continuing speech: in_speech={in_speech}, ring_buffer_silences={sum(1 for _, s in ring_buffer if not s)}"
-                    print(msg.ljust(80), end='\r', flush=True)
+            #         in_speech = False
+            #         ring_buffer.clear()  # Only clear here, after silence detected
+            #         voiced_frames = bytearray()
+            #     else:
+            #         msg = f"...continuing speech: in_speech={in_speech}, ring_buffer_silences={sum(1 for _, s in ring_buffer if not s)}"
+            #         print(msg.ljust(80), end='\r', flush=True)
                     
     except WebSocketDisconnect:
         print("❌ Client disconnected")

@@ -9,5 +9,5 @@
 		"skipLibCheck": true,
 		"forceConsistentCasingInFileNames": true
 	},
-	"include": ["src", "src/vite-env.d.ts"]
+	"include": ["src", "src/vite-env.d.ts", "public/audio-processor.js"]
 }

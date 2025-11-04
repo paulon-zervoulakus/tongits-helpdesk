@@ -31,21 +31,21 @@ type VoiceMessagePlayerProps = {
 const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {  
   const [currentlyPlaying, setCurrentlyPlaying] = useState<number | null>(null);
   const [audioElement, setAudioElement] = useState<HTMLAudioElement | null>(null);
-
   const [messages, setMessages] = useState<MessageType[]>([]);
-  const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
+  // const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [inputText, setInputText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
-  const wsTextRef = useRef<WebSocket | null>(null);
-  const wsVoiceRef = useRef<WebSocket | null>(null);
-  
-  // Add refs for audio cancellation
+  // const wsTextRef = useRef<WebSocket | null>(null);
+  const wsVoiceRef = useRef<WebSocket | null>(null);    
   const currentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const playbackContextRef = useRef<AudioContext | null>(null);
   const playbackQueueRef = useRef<Float32Array[]>([]);
+  const token = localStorage.getItem("access_token") || "not found"  
+  
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -70,6 +70,8 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
       }
     };
   }, [audioElement]);
+  
+  // // ============= VOICE RECORDING
 
   // Audio cancellation function
   const cancelCurrentAudio = () => {
@@ -133,8 +135,8 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     };
   };
 
-  // ============= VOICE RECORDING
-  
+ 
+
   let audioContext: AudioContext | null = null;
   let processor: ScriptProcessorNode | null = null;
   let input: MediaStreamAudioSourceNode | null = null;
@@ -145,72 +147,106 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
   let lastSoundTime = Date.now();
   let isSendingAudio = false;
 
-  // Function to detect if audio contains speech
-  const hasAudioActivity = (float32Array: Float32Array): boolean => {
+  
+
+  function mergeBuffers(chunks: Float32Array[]): Float32Array{
+    const length = chunks.reduce((acc, chunk) => acc + chunk.length, 0);
+    const result = new Float32Array(length);
+    let offset = 0;
+    for (const chunk of chunks) {
+      result.set(chunk, offset);
+      offset += chunk.length;
+    }
+    return result;
+  }
+  function floatTo16BitPCM(float32Array: Float32Array): ArrayBuffer {
+    const buffer = new ArrayBuffer(float32Array.length * 2);
+    const view = new DataView(buffer);
+    let offset = 0;
+    for (let i = 0; i < float32Array.length; i++, offset += 2) {
+      let s = Math.max(-1, Math.min(1, float32Array[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+    }
+    return buffer;
+  }
+  function hasAudioActivity(float32Array: Float32Array): boolean {
+    // Function to detect if audio contains speech
     let sum = 0;
     for (let i = 0; i < float32Array.length; i++) {
       sum += Math.abs(float32Array[i]);
     }
     const average = sum / float32Array.length;
     return average > silenceThreshold;
-  };
-
+  }
   const startRecording = async () => {
-    const token = localStorage.getItem("access_token") || "not found"     
+
     const ws = new WebSocket(`ws://localhost:8000/stream/voicein?token=${encodeURIComponent(token)}`);
-
     ws.binaryType = "arraybuffer";
-    wsVoiceRef.current = ws
-
+    
     ws.onopen = async () => {
+      wsVoiceRef.current = ws
       console.log("Voice WS connected ✅");
       setIsRecording(true);
 
       audioContext = new AudioContext({ sampleRate: 16000 });
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
       input = audioContext.createMediaStreamSource(stream);
 
       // 4096 buffer, mono
       processor = audioContext.createScriptProcessor(4096, 1, 1);
 
+      let audioBuffer: Float32Array[] = []; // collect chunks
+
       processor.onaudioprocess = (e) => {
-        const inputData = e.inputBuffer.getChannelData(0); // Float32
-        
-        // Check if there's audio activity
-        const hasActivity = hasAudioActivity(inputData);
+        const inputData = e.inputBuffer.getChannelData(0);
         const now = Date.now();
-        
+        const hasActivity = hasAudioActivity(inputData);
+
         if (hasActivity) {
           lastSoundTime = now;
+          audioBuffer.push(new Float32Array(inputData)); // store speech
           if (!isSendingAudio) {
-            console.log("🎤 Started detecting speech - beginning audio transmission");
+            console.log("🎤 Speech started");
             isSendingAudio = true;
+
+            // 🛑 Stop AI playback IMMEDIATELY
+            cancelCurrentAudio();
           }
         }
-        
-        // Only send audio if:
-        // 1. There's current activity, OR
-        // 2. We were recently sending and haven't been silent long enough
+
         const timeSinceLastSound = now - lastSoundTime;
-        const shouldSend = hasActivity || (isSendingAudio && timeSinceLastSound < minSilenceDuration);
-        
-        if (shouldSend) {
-          const pcm16 = floatTo16BitPCM(inputData);
+
+        // when silence persists long enough, flush buffer
+        if (isSendingAudio && timeSinceLastSound >= minSilenceDuration) {
+          console.log("🔇 Speech ended, sending audio batch");
+
+          // Merge collected audio into one array
+          const merged = mergeBuffers(audioBuffer);
+
+          // Convert to PCM16 and send once
+          const pcm16 = floatTo16BitPCM(merged);
           if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(pcm16);
+
+            // reset all
+            audioBuffer = [];
+            lastSoundTime = Date.now();
+            isSendingAudio = false;
+            console.log("message sent");
           }
-        } else if (isSendingAudio && timeSinceLastSound >= minSilenceDuration) {
-          console.log("🔇 Silence detected - stopping audio transmission");
+
+          // reset state
           isSendingAudio = false;
+          audioBuffer = [];
         }
       };
 
       input.connect(processor);
-      processor.connect(audioContext.destination); // required in some browsers
+      processor.connect(audioContext.destination); 
     };
 
     ws.onmessage = (evt) => {
-
+      /// This handles incoming message via websocket
       if(typeof evt.data === "string"){
         let message = evt.data;       
 
@@ -245,6 +281,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
           }
         }
       } else if (evt.data instanceof ArrayBuffer) {
+        cancelCurrentAudio();
         // PCM16 audio from Piper
         const int16 = new Int16Array(evt.data);
         const float32 = new Float32Array(int16.length);
@@ -255,7 +292,10 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
         playQueuedAudio();
       }
     }
+
     ws.onclose = () => {      
+      wsVoiceRef.current?.close();
+
       console.log("WS closed ❌");
       const errorMessage = { 
         text: "", 
@@ -265,7 +305,15 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
       };      
       setMessages((prev) => [...prev, errorMessage]);
       setIsRecording(false);
+      if (processor && input) {      
+        input.disconnect(processor);
+        processor.disconnect();      
+        processor.onaudioprocess = null;
+        processor = null;
+        console.log("Processor disconnected");
+      }
     }
+
     ws.onerror = (err) => {
       console.error("WS error ❌", err);
       const errorMessage = { 
@@ -277,7 +325,10 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
       setMessages((prev) => [...prev, errorMessage]);
       setIsRecording(false);
     }
+
   };
+
+  
 
   const stopRecording = () => {
     // Cancel current audio playback when stopping recording
@@ -287,11 +338,6 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     isSendingAudio = false;
     lastSoundTime = Date.now();
     
-    // Your existing stopRecording code
-    if (processor && input) {
-      input.disconnect(processor);
-      processor.disconnect();
-    }
     audioContext?.close();
     if (wsVoiceRef.current && wsVoiceRef.current.readyState === WebSocket.OPEN){
       console.log("Stopped recording");
@@ -300,17 +346,8 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     setIsRecording(false);
   };
 
-  // helper
-  function floatTo16BitPCM(float32Array: Float32Array): ArrayBuffer {
-    const buffer = new ArrayBuffer(float32Array.length * 2);
-    const view = new DataView(buffer);
-    let offset = 0;
-    for (let i = 0; i < float32Array.length; i++, offset += 2) {
-      let s = Math.max(-1, Math.min(1, float32Array[i]));
-      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
-    }
-    return buffer;
-  }
+  
+  
 
   const VoiceMessagePlayer:React.FC<VoiceMessagePlayerProps> = ({ audioUrl, isPlaying, onPlay, onStop }) => {
     return (
@@ -352,7 +389,7 @@ const LobbyPage: React.FC<LobbyProps> = ({user, onLogout}) => {
     setAudioElement(audio);
   };
 
-  const stopAudio = () => {
+  const stopAudio = () => {    
     if (audioElement) {
       audioElement.pause();
       audioElement.currentTime = 0;

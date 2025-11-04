@@ -73,7 +73,7 @@ def node_neutral(state: AgentState, config: RunnableConfig) -> AgentState:
         return state
     
     
-    NEUTRAL_PROMPT = """Your role is to synthesize a response for casual or neutral conversations while being helpful and persuasive to push the user to join upcoming events.
+    NEUTRAL_PROMPT = """Your role is toresponse for casual or neutral conversations.
 
 CONTEXT AWARENESS:
 - Use the conversation summary to understand what has been discussed previously
@@ -83,16 +83,13 @@ CONTEXT AWARENESS:
 
 ### INSTRUCTIONS ###
 1. Always stay polite, upbeat, and encouraging.
-2. If the user just makes small talk, responds briefly, or changes topic, keep the flow natural but steer the conversation back toward:
-   - inviting them to join the upcoming events.
-   - highlighting benefits (fun, prizes, community).
-   - reassuring them if they hesitate or show doubt.
-3. If the user resists, you remain friendly, never pushy, but **resilient** — gently reframe the invitation with positivity.
-4. Use short, clear, natural sentences. Avoid robotic repetition.
+2. If the user just makes small talk, responds briefly.
+3. Stay focus on the topic and use conversation summary as needed.
+4. If the user resists, you remain friendly, and funny.
+5. Use short, clear, natural sentences. Avoid robotic repetition.
 
 ### RESPONSE STYLE ###
 - Friendly and conversational.
-- Supportive and encouraging.
 - Slightly playful if appropriate.
 
 ---
@@ -104,7 +101,7 @@ Conversation summary: {conversation_summary}
 Synthesize response:"""
 
     intent_phrases = ",".join(
-        [item.phrase_message for item in state["intent_list"].intent_list if item.intent == "neutral"]
+        [item.phrase_message for item in state["intent_list"] if item.intent == "neutral"]
     )
     intent_prompt = ChatPromptTemplate.from_template(NEUTRAL_PROMPT)
 
@@ -123,7 +120,7 @@ Synthesize response:"""
         print(f"Completion tokens: {cb.completion_tokens}")
         print(f"Total tokens: {cb.total_tokens}")
         elapsed = (datetime.now() - start_time).total_seconds()
-        print(f"\nTime spent: {elapsed:.3f}")    
+        print(f"\nTime spent node_neutral: {elapsed:.3f}")    
         print("**********************************")
         return {
             **state,

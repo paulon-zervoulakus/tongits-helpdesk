@@ -1,4 +1,5 @@
 from langgraph.graph import StateGraph, START, END
+from langgraph.types import Send
 from langchain_core.messages import HumanMessage 
 from llm_model import checkpointer
 from ai_v2.states import AgentState
@@ -24,7 +25,12 @@ def preprocess(state: AgentState) -> AgentState:
 
 def intent_router(state: AgentState):
     """Return multiple next nodes to fan-out in parallel."""
-    return ["node_availability", "node_game_ruling", "node_neutral", "node_registration"]
+    return [
+        Send("node_availability", state), 
+        Send("node_game_ruling", state),
+        Send("node_neutral", state),
+        Send("node_registration", state)
+    ]
 
 def build_graph():
     graph = StateGraph(AgentState)
@@ -36,22 +42,27 @@ def build_graph():
     graph.add_node("node_game_ruling", node_game_ruling)
     graph.add_node("node_availability", node_availability) 
     graph.add_node("node_registration", node_registration)
-    graph.add_node("node_consolidator_manager", node_consolidator_manager)
+    graph.add_node("node_consolidator_manager", node_consolidator_manager)    
     graph.add_node("node_msg_summarizer", node_msg_summarizer)
 
     graph.add_edge(START, "preprocess")
+    
+    # Intent clasiification
     graph.add_edge("preprocess", "node_classify_intent")
 
     # Proper fan-out (parallel execution)
     graph.add_conditional_edges("node_classify_intent", intent_router)
 
+    # Parallel 
     graph.add_edge("node_neutral", "node_consolidator_manager")
     graph.add_edge("node_game_ruling", "node_consolidator_manager")
     graph.add_edge("node_availability", "node_consolidator_manager")
     graph.add_edge("node_registration", "node_consolidator_manager")
 
-    # End
+    # The consolidator job is to consolidate all the parallel responses in one 
     graph.add_edge("node_consolidator_manager", "node_msg_summarizer")
+
+    # This is for logging purposes
     graph.add_edge("node_msg_summarizer", END)
 
     return graph.compile(checkpointer=checkpointer)
